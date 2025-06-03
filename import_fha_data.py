@@ -11,54 +11,59 @@ import os
 import glob
 import pandas as pd
 import pyarrow as pa
+import polars as pl
 import pyarrow.parquet as pq
+from pathlib import Path
 from mtgdicts import FHADictionary
 import config
 
-#%% Local Functions
-## Single-Family
+#%% Single-Family
 # Clean Single Family Sheets
-def clean_sf_sheets(df) :
+def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean excel sheets for FHA single-family data.
     """
     
-    # Rename Columns
-    rename_dict = {'Endorsement Month': 'Month',
-                   'Original Mortgage Amount': 'Mortgage Amount',
-                   'Origination Mortgagee/Sponsor Originator': 'Originating Mortgagee',
-                   'Origination Mortgagee Sponsor Or': 'Originating Mortgagee',
-                   'Orig Num': 'Originating Mortgagee Number',
-                   'Property/Product Type': 'Property Type',
-                   'Property Type Final': 'Property Type',
-                   'Sponosr Number': 'Sponsor Number',
-                   'Sponsor Num': 'Sponsor Number',
-                   'Endorsement  Year': 'Year',
-                   'Endorsment Year': 'Year',
-                   'Endorsement Year': 'Year'}
+    # Rename Columns to Standardize
+    rename_dict = {
+        'Endorsement Month': 'Month',
+        'Original Mortgage Amount': 'Mortgage Amount',
+        'Origination Mortgagee/Sponsor Originator': 'Originating Mortgagee',
+        'Origination Mortgagee Sponsor Or': 'Originating Mortgagee',
+        'Orig Num': 'Originating Mortgagee Number',
+        'Property/Product Type': 'Property Type',
+        'Property Type Final': 'Property Type',
+        'Sponosr Number': 'Sponsor Number',
+        'Sponsor Num': 'Sponsor Number',
+        'Endorsement  Year': 'Year',
+        'Endorsment Year': 'Year',
+        'Endorsement Year': 'Year',
+    }
     df.columns = [x.replace('_',' ').strip() for x in df.columns]
-    df.rename(columns = rename_dict, inplace = True, errors = 'ignore')
+    df = df.rename(columns = rename_dict, errors = 'ignore')
     
     # Drop Unnamed Columns
     unnamed_columns = [x for x in df.columns if 'Unnamed' in x]
-    df.drop(columns = unnamed_columns, inplace = True)
+    df = df.drop(columns = unnamed_columns)
 
     # Convert Columns to Numeric
-    numeric_columns = ['Property Zip',
-                       'Originating Mortgagee Number',
-                       'Sponsor Number',
-                       'Non Profit Number',
-                       'Interest Rate',
-                       'Mortgage Amount',
-                       'Year',
-                       'Month']
+    numeric_columns = [
+        'Property Zip',
+        'Originating Mortgagee Number',
+        'Sponsor Number',
+        'Non Profit Number',
+        'Interest Rate',
+        'Mortgage Amount',
+        'Year',
+        'Month',
+    ]
     for column in numeric_columns :
         if column in df.columns :
-            df[column] = pd.to_numeric(df[column], errors = 'coerce')
+            df[column] = pd.to_numeric(df[column], errors='coerce')
     
     # Drop Bad Observations (Only One I Know)
     drop_index = df[df['Loan Purpose'] == 'Loan_Purpose'].index
-    df.drop(drop_index, inplace = True)
+    df = df.drop(drop_index)
 
     # Replace Bad Loan Purposes for 2016
     df.loc[df['Loan Purpose'].isin(['Fixed Rate', 'Adjustable Rate']), 'Loan Purpose'] = 'Purchase'
@@ -85,7 +90,7 @@ def clean_sf_sheets(df) :
     return df
 
 # Convert FHA Single-Family Files
-def convert_fha_sf_snapshots(data_folder, save_folder, overwrite = False) :
+def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
     """
     Converts and cleans monthly HECM snapshots, standardizing variable names
     across files.
@@ -109,15 +114,16 @@ def convert_fha_sf_snapshots(data_folder, save_folder, overwrite = False) :
     # Read Data File-by-File
     for year in range(2010, 2099) :
 
-        for mon in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] :
-
+        # for mon in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] :
+        for mon in range(1, 13) :
             # Check if Raw File Exists and Convert
-            files = glob.glob(f'{data_folder}/FHA_SFSnapshot_{mon}{year}.xls*')
+            # files = glob.glob(f'{data_folder}/FHA_SFSnapshot_{mon}{year}.xls*')
+            files = glob.glob(f'{data_folder}/fha_snapshot_{year}{mon:02d}01*.xls*')
             if files :
 
                 # File Names
                 input_file = files[0]
-                output_file = f'{save_folder}/fha_sfsnapshot_{mon}{year}.parquet'
+                output_file = f'{save_folder}/fha_snapshot_{year}{mon:02d}01.parquet'
 
                 # Convert File if Not Exists or if Overwrite Mode is On
                 if not os.path.exists(output_file) or overwrite :
@@ -148,8 +154,7 @@ def convert_fha_sf_snapshots(data_folder, save_folder, overwrite = False) :
                     df = df.drop(columns = ['Group ID', 'Minimum Group ID'])
                     
                     # Save
-                    dt = pa.Table.from_pandas(df, preserve_index=False)
-                    pq.write_table(dt, output_file)
+                    df.to_parquet(output_file, index=False)
 
                 else :
 
@@ -157,7 +162,7 @@ def convert_fha_sf_snapshots(data_folder, save_folder, overwrite = False) :
                     print('File', output_file, 'already exists!')
 
 # Combine FHA Single-Family Snapshots
-def combine_fha_sf_snapshots(data_folder, save_folder, min_year = 2010, max_year = 2024, file_suffix = '_2012-2023') :
+def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int=2010, max_year: int=2024, file_suffix: str | None=None) -> None:
     """
     Combines cleaned monthly SF snapshots into a single file containing all
     years/months.
@@ -184,21 +189,21 @@ def combine_fha_sf_snapshots(data_folder, save_folder, min_year = 2010, max_year
     # Get Yearly Files and Combine
     df = []
     for year in range(min_year, max_year+1) :
-        files = glob.glob(f'{data_folder}/fha_sfsnapshot*{year}.parquet')
+        files = glob.glob(f'{data_folder}/fha_snapshot*{year}*.parquet')
         for file in files :
-            df_a = pq.read_table(file)
+            df_a = pl.scan_parquet(file)
             df.append(df_a)
-    df = pa.concat_tables(df)
+    df = pl.concat(df, how='diagonal_relaxed')
 
     # Save Combine File
     if file_suffix is None :
         file_suffix = f'_{min_year}-{max_year}'
     save_file = f'{save_folder}/fha_combined_sf_originations{file_suffix}.parquet'
-    pq.write_table(df, save_file)
+    df.sink_parquet(save_file)
 
 #%% HECM
 # Clean Sheets
-def clean_hecm_sheets(df) :
+def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean HECM sheets.
 
@@ -215,23 +220,24 @@ def clean_hecm_sheets(df) :
     """
 
     # Rename Columns
-    rename_dict = {'NMLS*': 'NMLS',
-                   'Sponosr Number': 'Sponsor Number',
-                   'Standard Saver': 'Standard/Saver',
-                   'Purchase /Refinance': 'Purchase/Refinance',
-                   'Purchase Refinance': 'Purchase/Refinance',
-                   'Previous Servicer': 'Previous Servicer ID',
-                   'Endorsement Year': 'Year',
-                   'Endorsement Month': 'Month',
-                   'Hecm Type': 'HECM Type',
-                   'Originating Mortgagee/Sponsor Originator': 'Originating Mortgagee',
-                   'Originating Mortgagee Sponsor Originator': 'Originating Mortgagee',
-                   'Originating Mortgagee Sponsor Or': 'Originating Mortgagee',
-                   'Sponsored Originator': 'Sponsor Originator',
-                   }
+    rename_dict = {
+        'NMLS*': 'NMLS',
+        'Sponosr Number': 'Sponsor Number',
+        'Standard Saver': 'Standard/Saver',
+        'Purchase /Refinance': 'Purchase/Refinance',
+        'Purchase Refinance': 'Purchase/Refinance',
+        'Previous Servicer': 'Previous Servicer ID',
+        'Endorsement Year': 'Year',
+        'Endorsement Month': 'Month',
+        'Hecm Type': 'HECM Type',
+        'Originating Mortgagee/Sponsor Originator': 'Originating Mortgagee',
+        'Originating Mortgagee Sponsor Originator': 'Originating Mortgagee',
+        'Originating Mortgagee Sponsor Or': 'Originating Mortgagee',
+        'Sponsored Originator': 'Sponsor Originator',
+    }   
     
     df.columns = [x.replace('_',' ').strip() for x in df.columns]
-    df.rename(columns = rename_dict, inplace = True, errors = 'ignore')
+    df = df.rename(columns = rename_dict, errors = 'ignore')
 
     # Replace Not Available and Replace np.nan Columns with NoneTypes
     for col in df.columns :
@@ -239,17 +245,19 @@ def clean_hecm_sheets(df) :
         df.loc[pd.isna(df[col]), col] = None
 
     # Convert Columns
-    numeric_cols = ['Property Zip',
-                    'Originating Mortgagee Number',
-                    'Sponsor Number',
-                    'NMLS',
-                    'Interest Rate',
-                    'Initial Principal Limit',
-                    'Maximum Claim Amount',
-                    'Year',
-                    'Month',
-                    'Current Servicer ID',
-                    'Previous Servicer ID']
+    numeric_cols = [
+        'Property Zip',
+        'Originating Mortgagee Number',
+        'Sponsor Number',
+        'NMLS',
+        'Interest Rate',
+        'Initial Principal Limit',
+        'Maximum Claim Amount',
+        'Year',
+        'Month',
+        'Current Servicer ID',
+        'Previous Servicer ID',
+    ]
     for col in numeric_cols :
         if col in df.columns :
             df[col] = pd.to_numeric(df[col], errors = 'coerce')
@@ -264,7 +272,7 @@ def clean_hecm_sheets(df) :
     return df
 
 # Convert FHA HECM Files
-def convert_fha_hecm_snapshots(data_folder, save_folder, overwrite = False) :
+def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
     """
     Converts and cleans monthly HECM snapshots, standardizing variable names
     across files.
@@ -340,7 +348,7 @@ def convert_fha_hecm_snapshots(data_folder, save_folder, overwrite = False) :
                     print('File', output_file, 'already exists!')
 
 # Combine FHA HECM Snapshots
-def combine_fha_hecm_snapshots(data_folder, save_folder, min_year=2012, max_year=2024, file_suffix=None) :
+def combine_fha_hecm_snapshots(data_folder: Path, save_folder: Path, min_year: int = 2012, max_year: int = 2024, file_suffix: str | None = None) -> None:
     """
     Combines cleaned monthly HECM snapshots into a single file containing all
     years/months.
@@ -371,17 +379,17 @@ def combine_fha_hecm_snapshots(data_folder, save_folder, min_year=2012, max_year
     # Get Files and Combine
     df = []
     for year in range(min_year, max_year+1) :
-        files = glob.glob(f'{data_folder}/fha_hecmsnapshot*{year}.parquet')
+        files = glob.glob(f'{data_folder}/fha_hecm*snapshot*{year}*.parquet')
         for file in files :
-            df_a = pq.read_table(file)
+            df_a = pl.scan_parquet(file)
             df.append(df_a)
-    df = pa.concat_tables(df, promote = True)
+    df = pl.concat(df, how='diagonal_relaxed')
 
     # Save Combined File
     if file_suffix is None :
         file_suffix = f'_{min_year}-{max_year}'
     save_file = f'{save_folder}/fha_combined_hecm_originations{file_suffix}.parquet'
-    pq.write_table(df, save_file)
+    df.sink_parquet(save_file)
 
 #%% Main Routine
 if __name__ == '__main__' :
@@ -398,22 +406,22 @@ if __name__ == '__main__' :
 
     ## Single Family
     # Convert Snapshots
-    DATA_FOLDER = RAW_DIR / 'single_family'
+    DATA_FOLDER = RAW_DIR / 'temp'
     SAVE_FOLDER = CLEAN_DIR / 'single_family'
-    convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
+    # convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2024, file_suffix='_201006-202411')
+    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
 
     ## HECM
     # Convert HECM Snapshots
     DATA_FOLDER = RAW_DIR / 'hecm'
     SAVE_FOLDER = CLEAN_DIR / 'hecm'
-    convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
+    # convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'hecm'
     SAVE_FOLDER = DATA_DIR
-    combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2024, file_suffix='_201201-202410')
+    # combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2025, file_suffix='_201201-202502')

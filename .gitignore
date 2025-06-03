@@ -58,3 +58,5 @@ Thumbs.db
 # Folders
 data/*
 output/*
+
+__pycache__/*
