@@ -56,7 +56,11 @@ Thumbs.db
 .python-version
 
 # Folders
-data/*
+data/*.parquet
+data/clean
+data/raw
+data/clean/archived/hecm/
+data/clean/archived/single_family/
 output/*
 
 __pycache__/*

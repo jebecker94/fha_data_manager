@@ -306,12 +306,12 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
         for mon in range(1, 13) :
             # Check if Raw File Exists and Convert
             # files = glob.glob(f'{data_folder}/FHA_SFSnapshot_{mon}{year}.xls*')
-            files = glob.glob(f'{data_folder}/fha_snapshot_{year}{mon:02d}01*.xls*')
+            files = glob.glob(f'{data_folder}/fha_sf_snapshot_{year}{mon:02d}01*.xls*')
             if files :
 
                 # File Names
                 input_file = files[0]
-                output_file = f'{save_folder}/fha_snapshot_{year}{mon:02d}01.parquet'
+                output_file = f'{save_folder}/fha_sf_snapshot_{year}{mon:02d}01.parquet'
 
                 # Convert File if Not Exists or if Overwrite Mode is On
                 if not os.path.exists(output_file) or overwrite :
@@ -377,7 +377,7 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
     # Get Yearly Files and Combine
     df = []
     for year in range(min_year, max_year+1) :
-        files = glob.glob(f'{data_folder}/fha_snapshot*{year}*.parquet')
+        files = glob.glob(f'{data_folder}/fha_sf_snapshot*{year}*.parquet')
         for file in files :
             df_a = pl.scan_parquet(file)
             df.append(df_a)
@@ -617,9 +617,9 @@ if __name__ == '__main__' :
 
     ## Single Family
     # Convert Snapshots
-    DATA_FOLDER = RAW_DIR / 'temp'
+    DATA_FOLDER = RAW_DIR / 'single_family'
     SAVE_FOLDER = CLEAN_DIR / 'single_family'
-    # convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
+    convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
