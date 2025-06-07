@@ -10,7 +10,7 @@ Cleans individual single-family and HECM snapshots from the FHA website, and cre
 - Note: In progress
 2. Clean the single family and HECM data files
 - Convert the excel (or zipped excel) files into parquets
-- Add a new variable called "FHA Index" to each observation prior to saving. The index variable is a combination of the year and month, then the row number of the observation in the original data file.
+- Add a new variable called "FHA_Index" to each observation prior to saving. The index variable is a combination of the year and month, then the row number of the observation in the original data file, left-padded with zeroes to be seven digits long.
 - Note: The row number increments sequentially across all data sheets in the file. Usually the purchase mortgages come first and then refinances, but this may change over time as there are very few quality checks in place for the release of this data, it seems.
 3. Combine the single family and HECM data files
 - Implements a handful of standardization checks alongside the combination process. These checks are described below.

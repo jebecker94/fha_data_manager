@@ -17,6 +17,7 @@ from pathlib import Path
 from mtgdicts import FHADictionary
 import config
 import addfips
+import numpy as np
 
 #%% Support Functions
 # Standardize County Names
@@ -301,11 +302,8 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
 
     # Read Data File-by-File
     for year in range(2010, 2099) :
-
-        # for mon in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] :
         for mon in range(1, 13) :
             # Check if Raw File Exists and Convert
-            # files = glob.glob(f'{data_folder}/FHA_SFSnapshot_{mon}{year}.xls*')
             files = glob.glob(f'{data_folder}/fha_sf_snapshot_{year}{mon:02d}01*.xls*')
             if files :
 
@@ -335,11 +333,7 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
                     df = pd.concat(df)
                     
                     # Create FHA Index Variable
-                    df['Group ID'] = range(df.shape[0])
-                    df['Minimum Group ID'] = df.groupby(['Year','Month'])['Group ID'].transform('min')
-                    df['Group ID'] = df['Group ID'] - df['Minimum Group ID']
-                    df['FHA Index'] = df['Year'].astype('str') + df['Month'].astype('str').str.zfill(2) + '_' + df['Group ID'].astype('str')
-                    df = df.drop(columns = ['Group ID', 'Minimum Group ID'])
+                    df['FHA_Index'] = [f'{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
                     
                     # Save
                     df.to_parquet(output_file, index=False)
@@ -543,15 +537,10 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                         df = pd.concat(df)
 
                         # Create FHA Index Variable
-                        df['Group ID'] = range(df.shape[0])
-                        df['Minimum Group ID'] = df.groupby(['Year','Month'])['Group ID'].transform('min')
-                        df['Group ID'] = df['Group ID'] - df['Minimum Group ID']
-                        df['FHA Index'] = 'H' + df['Year'].astype('str') + df['Month'].astype('str').str.zfill(2) + '_' + df['Group ID'].astype('str')
-                        df = df.drop(columns = ['Group ID', 'Minimum Group ID'])
-                    
+                        df['FHA_Index'] = [f'H{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
+
                         # Save
-                        dt = pa.Table.from_pandas(df, preserve_index=False)
-                        pq.write_table(dt, output_file)
+                        df.to_parquet(output_file, index=False)
 
                 else :
 
@@ -619,6 +608,7 @@ if __name__ == '__main__' :
     # Convert Snapshots
     DATA_FOLDER = RAW_DIR / 'single_family'
     SAVE_FOLDER = CLEAN_DIR / 'single_family'
+    os.makedirs(SAVE_FOLDER, exist_ok=True)
     convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
