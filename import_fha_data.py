@@ -18,6 +18,7 @@ from mtgdicts import FHADictionary
 import config
 import addfips
 import numpy as np
+import datetime
 
 #%% Support Functions
 # Standardize County Names
@@ -183,28 +184,86 @@ def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_
     return df
 
 # Create Lender ID to Name Crosswalk
-def create_lender_id_to_name_crosswalk(df: pl.LazyFrame, lender_id_col: str = "Originating Mortgagee Number", lender_name_col: str = "Originating Mortgagee") -> pl.LazyFrame:
+def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.LazyFrame:
     """
     Create a crosswalk between lender ID and lender name.
+
+    Note: Requires the user to first run the convert_fha_sf_snapshots and convert_fha_hecm_snapshots functions.
     """
+
     print("Creating lender ID to name crosswalk...")
 
     # Create crosswalk
-    crosswalk = []
+    df = []
 
-    # Load originating mortgagee names and IDs from all single family files
+    # Combine institution names and IDs from all single family and HECM files
+    sf_files = glob.glob(f'{clean_data_folder}/single_family/fha_sf_snapshot*.parquet')
+    sf_files = [x for x in sf_files if '201408' not in x] # Skip August 2014 for single family sponsor names (see data quality notes in README.md)
+    for file in sf_files:
 
-    # Load sponsor names and IDs from all single family files
-    # Note: Skip August 2014 for single family sponsor names (see data quality notes in README.md)
+        # Get file date
+        print('Get institution data from:', file)
+        file_date = file.split('_')[-1].split('.')[0]
+        file_date = pd.to_datetime(file_date, format='%Y%m%d')
 
-    # Load originating mortgagee names and IDs from all HECM files
+        # Load originating mortgagee names and IDs from all single family files
+        df_a = pl.scan_parquet(file)
+        df_a = df_a.select(['Originating Mortgagee Number', 'Originating Mortgagee'])
+        df_a = df_a.rename({'Originating Mortgagee Number': 'Institution_Number',
+                        'Originating Mortgagee': 'Institution_Name'})
+        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
+        df.append(df_a)
 
-    # Load sponsor names and IDs from all HECM files
+        # Load sponsor names and IDs from all single family files
+        df_a = pl.scan_parquet(file)
+        df_a = df_a.select(['Sponsor Number', 'Sponsor Name'])
+        df_a = df_a.rename({'Sponsor Number': 'Institution_Number',
+                        'Sponsor Name': 'Institution_Name'})
+        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
+        df.append(df_a)
 
+    # Add lender data from HECM files
+    hecm_files = glob.glob(f'{clean_data_folder}/hecm/fha_hecm_snapshot*.parquet')
+    for file in hecm_files:
+
+        # Get file date
+        print('Get institution data from:', file)
+        file_date = file.split('_')[-1].split('.')[0]
+        file_date = pd.to_datetime(file_date, format='%Y%m%d')
+
+        # Load originating mortgagee names and IDs from all HECM files
+        df_a = pl.scan_parquet(file)
+        df_a = df_a.select(['Originating Mortgagee Number', 'Originating Mortgagee'])
+        df_a = df_a.rename({'Originating Mortgagee Number': 'Institution_Number',
+                        'Originating Mortgagee': 'Institution_Name'})
+        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
+        df.append(df_a)
+
+        # Load sponsor names and IDs from all HECM files
+        df_a = pl.scan_parquet(file)
+        df_a = df_a.select(['Sponsor Number', 'Sponsor Name'])
+        df_a = df_a.rename({'Sponsor Number': 'Institution_Number',
+                        'Sponsor Name': 'Institution_Name'})
+        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
+        df.append(df_a)
+    
     # Combine crosswalks
+    df = pl.concat(df, how='diagonal_relaxed')
+    df = df.unique()
+    df = df.drop_nulls()
+    df = df.sort(['Institution_Number','File_Date','Institution_Name'])
+    df = df.collect()
+
+    # Min and Max Date
+    df = df.with_columns(
+        pl.col('File_Date').min().over(['Institution_Number','Institution_Name']).alias('Min_Date'),
+        pl.col('File_Date').max().over(['Institution_Number','Institution_Name']).alias('Max_Date'),
+    )
+    df = df.drop(['File_Date'])
+    df = df.unique()
 
     # Return crosswalk
-    return crosswalk
+    return df
 
 #%% Single-Family
 # Clean Single Family Sheets
@@ -212,7 +271,7 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean excel sheets for FHA single-family data.
     """
-    
+
     # Rename Columns to Standardize
     rename_dict = {
         'Endorsement Month': 'Month',
@@ -400,6 +459,14 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
         pl.concat_str([pl.col('Year').cast(pl.Utf8).str.zfill(4), pl.col('Month').cast(pl.Utf8).str.zfill(2)], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
     )
 
+    # Replace Sponsor Name with '' for August 2014
+    df = df.with_columns(
+        pl.when(pl.col('Date') == datetime.datetime(2014,8,1))
+        .then(pl.lit(''))
+        .otherwise(pl.col('Sponsor Name'))
+        .alias('Sponsor Name')
+    )
+
     # Save Combine File
     if file_suffix is None :
         file_suffix = f'_{min_year}-{max_year}'
@@ -501,18 +568,15 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
     """
 
     # Read Data File-by-File
-    df = []
-    for year in range(2012, 2099) :
-
-        for mon in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] :
-
+    for year in range(2010, 2099) :
+        for mon in range(1, 13) :
             # Check if Raw File Exists and Convert
-            files = glob.glob(f'{data_folder}/FHA_HECMSnapshot_{mon}{year}.xls*')
+            files = glob.glob(f'{data_folder}/fha_hecm_snapshot_{year}{mon:02d}01*.xls*')
             if files :
 
                 # File Names
                 input_file = files[0]
-                output_file = f'{save_folder}/fha_hecmsnapshot_{mon}{year}.parquet'
+                output_file = f'{save_folder}/fha_hecm_snapshot_{year}{mon:02d}01.parquet'
 
                 # Convert File if Not Exists or if Overwrite Mode is On
                 if not os.path.exists(output_file) or overwrite :
@@ -524,7 +588,8 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                     xls = pd.ExcelFile(input_file)
                     sheets = xls.sheet_names
                     sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
-                    df_sheets = pd.read_excel(input_file, sheets)
+                    if sheets:
+                        df_sheets = pd.read_excel(input_file, sheets)
 
                     # Read Sheets
                     df = []
@@ -540,8 +605,10 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                         df['FHA_Index'] = [f'H{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
 
                         # Save
-                        df.to_parquet(output_file, index=False)
-
+                        try :
+                            df.to_parquet(output_file, index=False)
+                        except Exception as e :
+                            print(f'Error saving file {output_file}: {e}')
                 else :
 
                     # Display Progress
@@ -614,12 +681,13 @@ if __name__ == '__main__' :
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
+    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
 
     ## HECM
     # Convert HECM Snapshots
     DATA_FOLDER = RAW_DIR / 'hecm'
     SAVE_FOLDER = CLEAN_DIR / 'hecm'
+    os.makedirs(SAVE_FOLDER, exist_ok=True)
     # convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months

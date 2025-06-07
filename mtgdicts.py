@@ -46,7 +46,7 @@ class FHADictionary():
                 'Mortgage Amount': 'Int64',
                 'Year': 'Int16',
                 'Month': 'Int16',
-                'FHA Index': 'str',
+                'FHA_Index': 'str',
             }
             self.data_types = data_types
 
@@ -69,7 +69,7 @@ class FHADictionary():
                 ('Mortgage Amount', pa.int64()),
                 ('Year', pa.int16()),
                 ('Month', pa.int16()),
-                ('FHA Index', pa.string()),
+                ('FHA_Index', pa.string()),
             ]
             schema = pa.schema(schema)
             self.schema = schema
@@ -130,7 +130,7 @@ class FHADictionary():
                 ('Month', pa.int16()),
                 ('Current Servicer ID', pa.int64()),
                 ('Previous Servicer ID', pa.int64()),
-                ('FHA Index', pa.string()),
+                ('FHA_Index', pa.string()),
             ]
             schema = pa.schema(schema)
             self.schema = schema
