@@ -16,6 +16,194 @@ import pyarrow.parquet as pq
 from pathlib import Path
 from mtgdicts import FHADictionary
 import config
+import addfips
+
+#%% Support Functions
+# Standardize County Names
+def standardize_county_names(df: pl.LazyFrame, county_col: str = "Property County", state_col: str = "Property State") -> pl.LazyFrame:
+    """
+    Standardize county names to match FIPS database format.
+
+    Note: This function contains considerable hardcoding of ccounty names that reflects the idiosyncrasies of the FHA single family snapshot dataset. Not suitable for deployment in other projects.
+    
+    Args:
+        df: Input Polars LazyFrame
+        
+    Returns:
+        Polars LazyFrame with standardized county names
+    """
+
+    print("Standardizing county names...")
+
+    # First convert empty values and "NAN"/"None" to empty strings
+    df = df.with_columns(
+        pl.when(pl.col(county_col).is_null())
+        .then(pl.lit(""))
+        .when(pl.col(county_col).str.to_lowercase().is_in(["nan", "none"]))
+        .then(pl.lit(""))
+        .otherwise(pl.col(county_col))
+        .str.to_uppercase()
+        .alias(county_col)
+    )
+
+    # Fix obvious state/county mismatches for Alaska
+    df = df.with_columns(
+        pl.when(
+            (pl.col(county_col) == "ANNE ARUNDEL") & (pl.col(state_col) == "AK")
+        ).then(pl.lit("MD")).otherwise(pl.col(state_col)).alias(state_col)
+    ).with_columns(
+        pl.when(
+            (pl.col(county_col) == "BUNCOMBE") & (pl.col(state_col) == "AK")
+        ).then(pl.lit("NC")).otherwise(pl.col(state_col)).alias(state_col)
+    ).with_columns(
+        pl.when(
+            (pl.col(county_col) == "EL PASO") & (pl.col(state_col) == "AK")
+        ).then(pl.lit("TX")).otherwise(pl.col(state_col)).alias(state_col)
+    )
+    
+    # Apply specific county name fixes using when/then expressions
+    df = df.with_columns(
+        pl.when(
+            (pl.col(county_col) == "MATANUSKA SUSITNA") & (pl.col(state_col) == "AK")
+        ).then(pl.lit("MATANUSKA-SUSITNA"))
+        .when(
+            (pl.col(county_col) == "DE KALB") & (pl.col(state_col).is_in(["AL", "IL", "IN"]))
+        ).then(pl.lit("DEKALB"))
+        .when(
+            (pl.col(county_col) == "DU PAGE") & (pl.col(state_col) == "IL")
+        ).then(pl.lit("DUPAGE"))
+        .when(
+            (pl.col(county_col) == "LA SALLE") & (pl.col(state_col).is_in(["IL", "IN"]))
+        ).then(pl.lit("LASALLE"))
+        .when(
+            (pl.col(county_col) == "LA PORTE") & (pl.col(state_col) == "IN")
+        ).then(pl.lit("LAPORTE"))
+        .when(
+            (pl.col(county_col) == "ST JOSEPH") & (pl.col(state_col) == "IN")
+        ).then(pl.lit("ST. JOSEPH"))
+        .when(
+            (pl.col(county_col) == "MACON-BIBB COUNTY") & (pl.col(state_col) == "GA")
+        ).then(pl.lit("BIBB"))
+        .when(
+            (pl.col(county_col) == "ST JOHN THE BAPTIST") & (pl.col(state_col) == "LA")
+        ).then(pl.lit("ST. JOHN THE BAPTIST"))
+        .when(
+            (pl.col(county_col) == "STE GENEVIEVE") & (pl.col(state_col) == "MO")
+        ).then(pl.lit("SAINTE GENEVIEVE"))
+        .when(
+            (pl.col(county_col) == "DE SOTO") & (pl.col(state_col) == "MS")
+        ).then(pl.lit("DESOTO"))
+        .when(
+            (pl.col(county_col) == "BAYAM'N") & (pl.col(state_col) == "PR")
+        ).then(pl.lit("BAYAMON"))
+        .when(
+            (pl.col(county_col) == "LACROSSE") & (pl.col(state_col) == "WI")
+        ).then(pl.lit("LA CROSSE"))
+        .when(
+            (pl.col(county_col) == "LAPLATA") & (pl.col(state_col) == "CO")
+        ).then(pl.lit("LA PLATA"))
+        .when(
+            (pl.col(county_col) == "DEWITT") & (pl.col(state_col) == "IL")
+        ).then(pl.lit("DE WITT"))
+        .when(
+            (pl.col(county_col) == "CAN'VANAS") & (pl.col(state_col) == "PR")
+        ).then(pl.lit("CANOVANAS"))
+        .when(
+            pl.col(county_col).str.contains(" COUNTY$")
+        ).then(
+            pl.col(county_col).str.replace(" COUNTY$", "")
+        )
+        .otherwise(pl.col(county_col))
+        .alias(county_col)
+    )
+    
+    # Handle common prefixes after specific cases
+    df = df.with_columns(
+        pl.when(pl.col(county_col).str.starts_with("ST "))
+        .then(pl.concat_str([pl.lit("ST. "), pl.col(county_col).str.slice(3)]))
+        .when(pl.col(county_col).str.starts_with("STE "))
+        .then(pl.concat_str([pl.lit("SAINTE "), pl.col(county_col).str.slice(4)]))
+        .otherwise(pl.col(county_col))
+        .alias(county_col)
+    )
+
+    # Return DataFrame
+    return df
+
+# Add county FIPS codes to the dataframe
+def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_col: str = "Property County", fips_col: str = "FIPS") -> pl.LazyFrame:
+    """
+    Add FIPS codes to a Polars DataFrame containing state and county columns.
+    
+    Args:
+        df: Input Polars LazyFrame
+        state_col: Name of the state column (default: "Property State")
+        county_col: Name of the county column (default: "Property County")
+        
+    Returns:
+        Polars LazyFrame with added FIPS column
+    """
+    print("Starting FIPS code addition process...")
+
+    # Standardize the main dataframe's county names
+    print("Standardizing main dataframe county names...")
+    df = standardize_county_names(df, state_col=state_col, county_col=county_col)
+
+    # Get unique state/county pairs and standardize them
+    print("Getting unique county/state pairs...")
+    unique_counties = df.select([state_col, county_col]).unique()
+    unique_counties = standardize_county_names(unique_counties, state_col=state_col, county_col=county_col)
+    
+    # Create list to store county mappings
+    county_map = []
+    
+    # Initialize AddFIPS
+    print("Initializing AddFIPS...")
+    af = addfips.AddFIPS()
+    
+    # Generate FIPS codes for each unique county
+    print("Generating FIPS codes for unique counties...")
+    for row in unique_counties.collect().iter_rows():
+        df_row = pl.LazyFrame({state_col: [row[0]], county_col: [row[1]]})
+        fips = af.get_county_fips(row[1], row[0])
+        df_row = df_row.with_columns(pl.lit(fips).alias(fips_col))
+        county_map.append(df_row)
+    
+    # Combine all county mappings
+    print("Combining county mappings...")
+    county_map = pl.concat(county_map, how='diagonal_relaxed')
+    county_map = county_map.sort([fips_col, state_col, county_col])
+
+    # Join FIPS codes back to original dataframe
+    print("Joining FIPS codes back to main dataframe...")
+    df = df.join(county_map, on=[state_col, county_col], how="left")
+
+    # Return DataFrame
+    return df
+
+# Create Lender ID to Name Crosswalk
+def create_lender_id_to_name_crosswalk(df: pl.LazyFrame, lender_id_col: str = "Originating Mortgagee Number", lender_name_col: str = "Originating Mortgagee") -> pl.LazyFrame:
+    """
+    Create a crosswalk between lender ID and lender name.
+    """
+    print("Creating lender ID to name crosswalk...")
+
+    # Create crosswalk
+    crosswalk = []
+
+    # Load originating mortgagee names and IDs from all single family files
+
+    # Load sponsor names and IDs from all single family files
+    # Note: Skip August 2014 for single family sponsor names (see data quality notes in README.md)
+
+    # Load originating mortgagee names and IDs from all HECM files
+
+    # Load sponsor names and IDs from all HECM files
+
+    # Combine crosswalks
+
+    # Return crosswalk
+    return crosswalk
 
 #%% Single-Family
 # Clean Single Family Sheets
@@ -194,6 +382,29 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
             df_a = pl.scan_parquet(file)
             df.append(df_a)
     df = pl.concat(df, how='diagonal_relaxed')
+
+    # Replace null values with empty strings
+    for column in ["Originating Mortgagee", "Sponsor Name"]:
+        df = df.with_columns(
+            pl.when(pl.col(column).is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col(column))
+            .alias(column)
+        )
+        df = df.with_columns(
+            pl.when(pl.col(column).is_in(["nan", "None"]))
+            .then(pl.lit(""))
+            .otherwise(pl.col("Sponsor Name"))
+            .alias("Sponsor Name")
+        )
+
+    # Iterate over rows and add FIPS codes to unique_counties
+    df = add_county_fips(df)
+
+    # Create Datetime Column
+    df = df.with_columns(
+        pl.concat_str([pl.col('Year').cast(pl.Utf8).str.zfill(4), pl.col('Month').cast(pl.Utf8).str.zfill(2)], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
+    )
 
     # Save Combine File
     if file_suffix is None :

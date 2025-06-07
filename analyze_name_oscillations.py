@@ -1,9 +1,11 @@
+# Import Packages
 import polars as pl
 import glob
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 from collections import defaultdict
 
+# Define Function to Detect Name Oscillations
 def detect_name_oscillations(data_path: str | Path) -> None:
     """
     Analyze cases where lender names oscillate between different values over time.

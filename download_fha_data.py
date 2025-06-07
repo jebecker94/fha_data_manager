@@ -14,7 +14,7 @@ import tempfile
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Download Excel Files from URL
-def download_excel_files_from_url(page_url: str, destination_folder: str, pause_length: int=5, include_zip: bool=False, file_type: str=None):
+def download_excel_files_from_url(page_url: str, destination_folder: str, pause_length: int=5, include_zip: bool=False, file_type: str | None = None):
     """
     Finds all linked Excel files on a given webpage and downloads them
     to a specified folder.
@@ -152,7 +152,7 @@ def find_years_in_string(text: str) -> int:
     raise ValueError(f"No valid year pattern found in: {text}")
 
 # Find Month in String
-def find_month_in_string(text: str) -> int:
+def find_month_in_string(text: str) -> int | None:
     """
     Return the numeric value of the month whose abbreviation is contained in the provided string.
     """
@@ -211,7 +211,7 @@ def standardize_filename(original_filename: str, file_type: str) -> str:
         original_filename (str): The original filename
         
     Returns:
-        str: Standardized filename in format 'fha_snapshot_YYYYMMDD.[xlsx/zip]'
+        str: Standardized filename in format 'fha_sf_snapshot_YYYYMMDD.[xlsx/zip]'
 
     """
     # Get base name without path
@@ -243,7 +243,7 @@ def standardize_filename(original_filename: str, file_type: str) -> str:
 
         # Keep original extension (xlsx or zip)
         if file_type == 'sf' :
-            new_filename = f"fha_snapshot_{date_str}{extension}"
+            new_filename = f"fha_sf_snapshot_{date_str}{extension}"
         elif file_type == 'hecm' :
             new_filename = f"fha_hecm_snapshot_{date_str}{extension}"
         else :
@@ -299,7 +299,7 @@ def process_zip_file(zip_path: str, destination_folder: str, file_type: str) -> 
                                     date_str = f"{zip_year}{str(zip_month).zfill(2)}01"
                                     extension = os.path.splitext(file)[1]
                                     if file_type == 'sf':
-                                        new_filename = f"fha_snapshot_{date_str}{extension}"
+                                        new_filename = f"fha_sf_snapshot_{date_str}{extension}"
                                     elif file_type == 'hecm':
                                         new_filename = f"fha_hecm_snapshot_{date_str}{extension}"
                                     logging.info(f"Using zip file date for {file}: {new_filename}")
@@ -328,12 +328,13 @@ if __name__ == "__main__":
 
     # Download Single-Samily Data
     target_url = "https://www.hud.gov/stat/sfh/fha-sf-portfolio-snapshot"
-    download_to_folder = "./data/raw/temp"
+    download_to_folder = "./data/raw/single_family"
     download_excel_files_from_url(target_url, download_to_folder, include_zip=True, file_type='sf')
 
     # Download HECM Data
     target_url = "https://www.hud.gov/hud-partners/hecmsf-snapshot"
-    download_to_folder = "./data/raw/temp_hecm"
-    # download_excel_files_from_url(target_url, download_to_folder, include_zip=True, file_type='hecm')
+    download_to_folder = "./data/raw/hecm"
+    download_excel_files_from_url(target_url, download_to_folder, include_zip=True, file_type='hecm')
 
     # Download Multifamily Data
+    # Note: Not yet implemented

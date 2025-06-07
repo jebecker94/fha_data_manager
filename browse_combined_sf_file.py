@@ -2,67 +2,62 @@
 import polars as pl
 import glob
 import addfips
+import matplotlib.pyplot as plt
+import numpy as np
 
-# Load Data
-files = glob.glob("data/fha_combined_sf_originations*.parquet")
-df = pl.scan_parquet(files[0])
+# Main Routine
+if __name__ == "__main__":
 
-# Replace null values with empty strings
-for column in ["Originating Mortgagee", "Sponsor Name"]:
-    df = df.with_columns(
-        pl.when(pl.col(column).is_null())
-        .then(pl.lit(""))
-        .otherwise(pl.col(column))
-        .alias(column)
-    )
-    df = df.with_columns(
-        pl.when(pl.col(column).is_in(["nan", "None"]))
-        .then(pl.lit(""))
-        .otherwise(pl.col("Sponsor Name"))
-        .alias("Sponsor Name")
-    )
+    # Load Data
+    files = glob.glob("data/fha_combined_sf_originations*.parquet")
+    df = pl.scan_parquet(files[0])
 
-# Tabulate Categorical Columns
-for column in ["Loan Purpose", "Property Type", "Down Payment Source", "Product Type","Year","Month"]:
-    counts = df.group_by(column).count().sort("count", descending=True)
-    print(counts.collect())
+    # Tabulate Categorical Columns
+    for column in ["Loan Purpose", "Property Type", "Down Payment Source", "Product Type", "Year", "Month",'Date']:
+        counts = df.group_by(column).count().sort("count", descending=True)
+        print(counts.collect())
 
-# Iterate over rows and add FIPS codes to unique_counties
-af = addfips.AddFIPS()
-unique_counties = df.select(["Property State", "Property County"]).unique()
-county_map = []
-for row in unique_counties.collect().iter_rows() :
-    df_row = pl.LazyFrame({"Property State": [row[0]], "Property County": [row[1]]})
-    fips = af.get_county_fips(row[1], row[0])
-    df_row = df_row.with_columns(
-        pl.lit(fips).alias("FIPS")
-    )
-    county_map.append(df_row)
-county_map = pl.concat(county_map, how='diagonal_relaxed')
-county_map = county_map.sort(["FIPS",'Property State','Property County'])
-print(county_map.collect())
-df = df.join(county_map, on=["Property State", "Property County"], how="left")
+    # Tabulate FIPS, State, and County
+    for column in ["FIPS","Property State","Property County"]:
+        counts = df.group_by(column).count().sort("count", descending=True)
+        print(counts.collect())
 
-# Tabulate FIPS, State, and County
-for column in ["FIPS","Property State","Property County"]:
-    counts = df.group_by(column).count().sort("count", descending=True)
-    print(counts.collect())
+    # Count total missing FIPS codes
+    missing_count = df.filter(pl.col('FIPS').is_null()).count().collect()
+    print(f"\nTotal records with missing FIPS codes: {missing_count}")
 
-# Find Biggest Cities in California
-big_ca = df.filter(pl.col("Property State") == "CA").group_by("Property City").count().sort("count", descending=True)
-print(big_ca.collect())
+    # Identify Non-missing state/county pairs that lack FIPS codes and filter out rows with missing state or county
+    print("\nMost common state/county pairs with missing FIPS codes:")
+    missing_fips = df.filter(pl.col('FIPS').is_null()).select(['Property State','Property County'])
+    missing_fips = missing_fips.filter([~pl.col('Property State').is_null(), ~pl.col('Property County').is_null()])
+    missing_fips = missing_fips.filter([~pl.col('Property State').is_in(['nan','None','']), ~pl.col('Property County').is_in(['nan','None',''])])
+    missing_fips = missing_fips.group_by(["Property State", "Property County"]).count().sort("count", descending=True)
+    print(missing_fips.limit(20).collect())
+    mf = missing_fips.collect()
 
-# Find Biggest Counties in California
-big_ca = df.filter(pl.col("Property State") == "CA").group_by("Property County").count().sort("count", descending=True)
-print(big_ca.collect())
+    ## Miscellaneous
+    # Find Biggest Cities in California
+    big_ca = df.filter(pl.col("Property State") == "CA").group_by("Property City").count().sort("count", descending=True)
+    print(big_ca.collect())
 
-# Display a Historam of Rates
-rates = df.filter(pl.col("Interest Rate") >= 0, pl.col("Interest Rate") <= 10).select(pl.col("Interest Rate")).collect()
-rates.to_series().hist(bin_count=100)
+    # Find Biggest Counties in California
+    big_ca = df.filter(pl.col("Property State") == "CA").group_by("Property County").count().sort("count", descending=True)
+    print(big_ca.collect())
 
-# Focus on Home Purchase Loans in California
-df = df.collect()
-ca_purch = df.filter(pl.col('Loan Purpose').is_in(['Purchase']), pl.col('Property State').is_in(['CA']))
+    # Display a Historam of Rates
+    rates = df.filter(pl.col("Interest Rate") >= 0, pl.col("Interest Rate") <= 10).select(pl.col("Interest Rate")).collect()
+    rates_hist = rates.to_series().hist(bin_count=100)
 
-# Compute the average loan size by month
-ca_purch.group_by(['Year','Month']).agg(pl.col('Loan Amount').mean()) #.sort(['Year','Month']).collect()
+    # Focus on Home Purchase Loans in California
+    ca_purch = df.filter(pl.col('Loan Purpose').is_in(['Purchase']), pl.col('Property State').is_in(['CA']))
+
+    # Compute the average loan size by month
+    avg_size_ts = ca_purch.group_by(['Year','Month']).agg(pl.col('Mortgage Amount').mean()).sort(['Year','Month']).collect()
+
+    # Graph the time series of average loan size
+    plt.figure(figsize=(10, 6))
+    plt.plot(np.arange(len(avg_size_ts)), avg_size_ts['Mortgage Amount'])
+    plt.xlabel('Month')
+    plt.ylabel('Average Loan Size')
+    plt.title('Average Loan Size by Month')
+    plt.show()
