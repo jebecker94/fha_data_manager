@@ -676,12 +676,12 @@ if __name__ == '__main__' :
     DATA_FOLDER = RAW_DIR / 'single_family'
     SAVE_FOLDER = CLEAN_DIR / 'single_family'
     os.makedirs(SAVE_FOLDER, exist_ok=True)
-    convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
+    # convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
+    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
 
     ## HECM
     # Convert HECM Snapshots
