@@ -1,4 +1,4 @@
-# fha_data_manager
+# FHA Data Manager
 Tools for managing FHA's single-family and HECM snapshot data for research projects.
 
 # Functionality
@@ -35,7 +35,7 @@ Extensive exploration suggests that the originating mortgagee and sponsor IDs an
     1. Sample: 2010-Present HMDA yearly files
     2. Match Variables: Variables differ before and after 2018.
     a. Pre-2018: Location (add zips by matching to a zip-tract crosswalk), loan size (to the nearest 1000), date (match hmda loans in year X by considering loans in year X-1 month 12 until X+1 month 1), lender (best to infer from an initial match on non-lender characteristics), and loan purpose.
-    b. Post-2018: Add interest rate
+    b. Post-2018: Add interest rate, use binned loan amounts (10000 dollar bins centered on 5000s)
 - Matching with GNMA (public)
     * To perform a match between the FHA single-family mortgage data and the GNMA loan-level data, one can do the following:
     1. Sample: GNMA monthly origination files

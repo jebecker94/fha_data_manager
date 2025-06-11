@@ -433,6 +433,13 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
         files = glob.glob(f'{data_folder}/fha_sf_snapshot*{year}*.parquet')
         for file in files :
             df_a = pl.scan_parquet(file)
+            length1 = df_a.select(pl.len()).collect().to_series()[0]
+            df_a = df_a.unique()
+            length2 = df_a.select(pl.len()).collect().to_series()[0]
+
+            if length1 != length2 :
+                print('File', file, 'has', length1, 'rows before dropping duplicates and', length2, 'rows after dropping duplicates')
+
             df.append(df_a)
     df = pl.concat(df, how='diagonal_relaxed')
 
@@ -466,6 +473,9 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
         .otherwise(pl.col('Sponsor Name'))
         .alias('Sponsor Name')
     )
+
+    # Drop Duplicates: Unclear why there are duplicates in the combined file, but there are.
+    df = df.unique()
 
     # Save Combine File
     if file_suffix is None :
@@ -681,7 +691,7 @@ if __name__ == '__main__' :
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
+    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
 
     ## HECM
     # Convert HECM Snapshots
