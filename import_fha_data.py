@@ -340,15 +340,14 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
 # Convert FHA Single-Family Files
 def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
     """
-    Converts and cleans monthly HECM snapshots, standardizing variable names
-    across files.
+    Convert raw single-family snapshots to cleaned parquet files.
 
     Parameters
     ----------
-    data_folder : string
-        Path of folder where excel monthly SF snapshots are located.
-    save_folder : string
-        Path of folder where gzipped csv monthly SF snapshots are saved.
+    data_folder : pathlib.Path
+        Directory containing the raw Excel monthly SF snapshots.
+    save_folder : pathlib.Path
+        Directory where cleaned parquet snapshots are saved.
     overwrite : boolean, optional
         Whether to overwrite output files if a version already exists.
         The default is False.
@@ -410,16 +409,19 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
 
     Parameters
     ----------
-    data_folder : string
-        Path of folder where monthly SF snapshots are located.
-    save_folder : string
-        Path of folder where combined SF snapshots will be saved.
+    data_folder : pathlib.Path
+        Directory where monthly SF parquet snapshots are located.
+    save_folder : pathlib.Path
+        Directory where the combined parquet snapshot will be saved.
     min_year : integer, optional
         The first year of data to include in combined snapshots.
         The default is 2010.
     max_year : integer, optional
         The last year of data to include in combined snapshots.
         The default is 2024.
+    file_suffix : str, optional
+        Custom suffix for the output filename. Defaults to a range based on
+        ``min_year`` and ``max_year`` when not provided.
 
     Returns
     -------
@@ -553,10 +555,10 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
 
     Parameters
     ----------
-    data_folder : string
-        Path of folder where excel monthly HECM snapshots are located.
-    save_folder : string
-        Path of folder where gzipped csv monthly HECM snapshots are saved.
+    data_folder : pathlib.Path
+        Directory containing the raw Excel monthly HECM snapshots.
+    save_folder : pathlib.Path
+        Directory where cleaned parquet HECM snapshots are saved.
     overwrite : boolean, optional
         Whether to overwrite output files if a version already exists.
         The default is False.
@@ -624,18 +626,19 @@ def combine_fha_hecm_snapshots(data_folder: Path, save_folder: Path, min_year: i
 
     Parameters
     ----------
-    data_folder : string
-        Path of folder where monthly HECM snapshots are located.
-    save_folder : string
-        Path of folder where combined HECM snapshots will be saved.
+    data_folder : pathlib.Path
+        Directory containing monthly HECM parquet snapshots.
+    save_folder : pathlib.Path
+        Directory where the combined HECM snapshot will be written.
     min_year : integer, optional
         The first year of data to include in combined snapshots.
         The default is 2012.
     max_year : integer, optional
         The last year of data to include in combined snapshots.
         The default is 2024.
-    file_suffix : str
-        The suffix to use for the combined file name. The default is None.
+    file_suffix : str, optional
+        The suffix to use for the combined file name. When ``None`` a suffix
+        reflecting the year range is generated automatically.
 
     Returns
     -------

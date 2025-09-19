@@ -14,15 +14,27 @@ import tempfile
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Download Excel Files from URL
-def download_excel_files_from_url(page_url: str, destination_folder: str, pause_length: int=5, include_zip: bool=False, file_type: str | None = None):
-    """
-    Finds all linked Excel files on a given webpage and downloads them
-    to a specified folder.
+def download_excel_files_from_url(
+    page_url: str,
+    destination_folder: str,
+    pause_length: int = 5,
+    include_zip: bool = False,
+    file_type: str | None = None,
+) -> None:
+    """Download spreadsheet files linked from ``page_url`` into ``destination_folder``.
+
+    The routine looks for Excel workbooks (``.xlsx``, ``.xls`` and related formats) on
+    the target page and optionally processes zip archives that contain spreadsheets.
+    Downloaded filenames are standardised when ``file_type`` is provided so they
+    match the naming conventions used elsewhere in the project.
 
     Args:
-        page_url (str): The URL of the webpage to scrape for Excel links.
-        destination_folder (str): The path to the folder where Excel files
-                                  will be downloaded.
+        page_url: The URL of the webpage to scrape for spreadsheet links.
+        destination_folder: Directory where downloaded files should be stored.
+        pause_length: Seconds to pause between downloads to avoid hammering the server.
+        include_zip: Whether to download ``.zip`` archives in addition to spreadsheets.
+        file_type: When provided (``"sf"`` or ``"hecm"``), determines the prefix used
+            when standardising filenames. If ``None`` the original filenames are kept.
     """
 
     try:
@@ -118,20 +130,23 @@ def download_excel_files_from_url(page_url: str, destination_folder: str, pause_
 
 # Find Years in String
 def find_years_in_string(text: str) -> int:
-    """
-    Searches a string for year patterns and returns the full year as an integer.
-    Handles both 4-digit years (e.g., 2023) and 2-digit years (e.g., 13 for 2013).
-    
+    """Return the four-digit year encoded in ``text``.
+
+    The helper looks for four-digit year patterns first and then for legacy
+    two-digit month/year combinations (e.g. ``0113`` for January 2013).
+
     Args:
-        text (str): The string to search within.
-    
+        text: The string to search within.
+
     Returns:
-        int: The full year (e.g., 2013). Returns None if no valid year found.
+        The four-digit year extracted from ``text``.
+
+    Raises:
+        TypeError: If ``text`` is not a string.
+        ValueError: If no year-like pattern can be found.
     """
-    # Check that input text is a string
     if not isinstance(text, str):
-        logging.warning("Input to find_years_in_string was not a string. Returning None.")
-        return None
+        raise TypeError("Expected text to be a string when extracting years.")
 
     # First try to find 4-digit years
     found_years = re.findall(r'(20\d{2})', text)
@@ -153,8 +168,16 @@ def find_years_in_string(text: str) -> int:
 
 # Find Month in String
 def find_month_in_string(text: str) -> int | None:
-    """
-    Return the numeric value of the month whose abbreviation is contained in the provided string.
+    """Return the month number referenced in ``text`` if one is present.
+
+    The search recognises common three-letter month abbreviations and a handful of
+    variants used in the FHA downloads (e.g. ``"JLY"``).
+
+    Args:
+        text: The string to inspect.
+
+    Returns:
+        The numeric month (``1``-``12``) when a match is found, otherwise ``None``.
     """
 
     # Dictionary of Month Abbreviations
@@ -182,7 +205,7 @@ def find_month_in_string(text: str) -> int | None:
     return None
 
 # Handle File Dates
-def handle_file_dates(file_name: str) -> str :
+def handle_file_dates(file_name: str) -> str:
     """
     Takes a file name and creates a standardized suffix in the form _YYYYMM.
     """
@@ -201,18 +224,23 @@ def handle_file_dates(file_name: str) -> str :
 
 # Standardize Filename
 def standardize_filename(original_filename: str, file_type: str) -> str:
-    """
-    Converts various FHA snapshot filenames into a standardized YYYYMMDD format.
-    Handles multiple filename patterns:
-    - Modern format: 'FHA_SFSnapshot_Aug2023.xlsx'
-    - Legacy format: 'fha_0113.zip' (where 01 is month and 13 is year)
-    
-    Args:
-        original_filename (str): The original filename
-        
-    Returns:
-        str: Standardized filename in format 'fha_sf_snapshot_YYYYMMDD.[xlsx/zip]'
+    """Convert FHA snapshot filenames into a standard ``YYYYMMDD`` form.
 
+    Handles multiple filename patterns:
+
+    * Modern format: ``FHA_SFSnapshot_Aug2023.xlsx``
+    * Legacy format: ``fha_0113.zip`` (where ``01`` is month and ``13`` is year)
+
+    Args:
+        original_filename: The original filename, with or without a path component.
+        file_type: Indicates which naming convention to apply (``"sf"`` or ``"hecm"``).
+
+    Returns:
+        A standardised filename matching the project's naming conventions. If the
+        filename cannot be parsed the original ``original_filename`` is returned.
+
+    Raises:
+        ValueError: If ``file_type`` is not recognised.
     """
     # Get base name without path
     base_name = os.path.basename(original_filename)
