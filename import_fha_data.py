@@ -8,9 +8,7 @@ Last Modified on Sunday March 23 2025
 ## Setup
 # Import Packages
 import datetime
-import glob
 import logging
-import os
 from pathlib import Path
 
 import addfips
@@ -214,17 +212,18 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
     df = []
 
     # Combine institution names and IDs from all single family and HECM files
-    sf_files = glob.glob(f'{clean_data_folder}/single_family/fha_sf_snapshot*.parquet')
-    sf_files = [x for x in sf_files if '201408' not in x] # Skip August 2014 for single family sponsor names (see data quality notes in README.md)
+    clean_path = Path(clean_data_folder)
+    sf_files = sorted((clean_path / 'single_family').glob('fha_sf_snapshot*.parquet'))
+    sf_files = [file for file in sf_files if '201408' not in file.name] # Skip August 2014 for single family sponsor names (see data quality notes in README.md)
     for file in sf_files:
 
         # Get file date
         logger.info("Get institution data from: %s", file)
-        file_date = file.split('_')[-1].split('.')[0]
+        file_date = file.stem.split('_')[-1]
         file_date = pd.to_datetime(file_date, format='%Y%m%d')
 
         # Load originating mortgagee names and IDs from all single family files
-        df_a = pl.scan_parquet(file)
+        df_a = pl.scan_parquet(str(file))
         df_a = df_a.select(['Originating Mortgagee Number', 'Originating Mortgagee'])
         df_a = df_a.rename({'Originating Mortgagee Number': 'Institution_Number',
                         'Originating Mortgagee': 'Institution_Name'})
@@ -232,7 +231,7 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
         df.append(df_a)
 
         # Load sponsor names and IDs from all single family files
-        df_a = pl.scan_parquet(file)
+        df_a = pl.scan_parquet(str(file))
         df_a = df_a.select(['Sponsor Number', 'Sponsor Name'])
         df_a = df_a.rename({'Sponsor Number': 'Institution_Number',
                         'Sponsor Name': 'Institution_Name'})
@@ -240,16 +239,16 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
         df.append(df_a)
 
     # Add lender data from HECM files
-    hecm_files = glob.glob(f'{clean_data_folder}/hecm/fha_hecm_snapshot*.parquet')
+    hecm_files = sorted((clean_path / 'hecm').glob('fha_hecm_snapshot*.parquet'))
     for file in hecm_files:
 
         # Get file date
         logger.info("Get institution data from: %s", file)
-        file_date = file.split('_')[-1].split('.')[0]
+        file_date = file.stem.split('_')[-1]
         file_date = pd.to_datetime(file_date, format='%Y%m%d')
 
         # Load originating mortgagee names and IDs from all HECM files
-        df_a = pl.scan_parquet(file)
+        df_a = pl.scan_parquet(str(file))
         df_a = df_a.select(['Originating Mortgagee Number', 'Originating Mortgagee'])
         df_a = df_a.rename({'Originating Mortgagee Number': 'Institution_Number',
                         'Originating Mortgagee': 'Institution_Name'})
@@ -257,7 +256,7 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
         df.append(df_a)
 
         # Load sponsor names and IDs from all HECM files
-        df_a = pl.scan_parquet(file)
+        df_a = pl.scan_parquet(str(file))
         df_a = df_a.select(['Sponsor Number', 'Sponsor Name'])
         df_a = df_a.rename({'Sponsor Number': 'Institution_Number',
                         'Sponsor Name': 'Institution_Name'})
@@ -379,15 +378,15 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
     for year in range(2010, 2099) :
         for mon in range(1, 13) :
             # Check if Raw File Exists and Convert
-            files = glob.glob(f'{data_folder}/fha_sf_snapshot_{year}{mon:02d}01*.xls*')
+            files = sorted(data_folder.glob(f'fha_sf_snapshot_{year}{mon:02d}01*.xls*'))
             if files :
 
                 # File Names
                 input_file = files[0]
-                output_file = f'{save_folder}/fha_sf_snapshot_{year}{mon:02d}01.parquet'
+                output_file = save_folder / f'fha_sf_snapshot_{year}{mon:02d}01.parquet'
 
                 # Convert File if Not Exists or if Overwrite Mode is On
-                if not os.path.exists(output_file) or overwrite :
+                if not output_file.exists() or overwrite :
 
                     # Display Progress
                     logger.info('Reading and Converting File: %s', input_file)
@@ -449,9 +448,9 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
     # Get Yearly Files and Combine
     df = []
     for year in range(min_year, max_year+1) :
-        files = glob.glob(f'{data_folder}/fha_sf_snapshot*{year}*.parquet')
+        files = sorted(data_folder.glob(f'fha_sf_snapshot*{year}*.parquet'))
         for file in files :
-            df_a = pl.scan_parquet(file)
+            df_a = pl.scan_parquet(str(file))
             df.append(df_a)
     df = pl.concat(df, how='diagonal_relaxed')
 
@@ -489,8 +488,8 @@ def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int
     # Save Combine File
     if file_suffix is None :
         file_suffix = f'_{min_year}-{max_year}'
-    save_file = f'{save_folder}/fha_combined_sf_originations{file_suffix}.parquet'
-    df.sink_parquet(save_file)
+    save_file = save_folder / f'fha_combined_sf_originations{file_suffix}.parquet'
+    df.sink_parquet(str(save_file))
 
 #%% HECM
 # Clean Sheets
@@ -590,15 +589,15 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
     for year in range(2010, 2099) :
         for mon in range(1, 13) :
             # Check if Raw File Exists and Convert
-            files = glob.glob(f'{data_folder}/fha_hecm_snapshot_{year}{mon:02d}01*.xls*')
+            files = sorted(data_folder.glob(f'fha_hecm_snapshot_{year}{mon:02d}01*.xls*'))
             if files :
 
                 # File Names
                 input_file = files[0]
-                output_file = f'{save_folder}/fha_hecm_snapshot_{year}{mon:02d}01.parquet'
+                output_file = save_folder / f'fha_hecm_snapshot_{year}{mon:02d}01.parquet'
 
                 # Convert File if Not Exists or if Overwrite Mode is On
-                if not os.path.exists(output_file) or overwrite :
+                if not output_file.exists() or overwrite :
 
                     # Display Progress
                     logger.info('Reading and Converting File: %s', input_file)
@@ -666,17 +665,17 @@ def combine_fha_hecm_snapshots(data_folder: Path, save_folder: Path, min_year: i
     # Get Files and Combine
     df = []
     for year in range(min_year, max_year+1) :
-        files = glob.glob(f'{data_folder}/fha_hecm*snapshot*{year}*.parquet')
+        files = sorted(data_folder.glob(f'fha_hecm*snapshot*{year}*.parquet'))
         for file in files :
-            df_a = pl.scan_parquet(file)
+            df_a = pl.scan_parquet(str(file))
             df.append(df_a)
     df = pl.concat(df, how='diagonal_relaxed')
 
     # Save Combined File
     if file_suffix is None :
         file_suffix = f'_{min_year}-{max_year}'
-    save_file = f'{save_folder}/fha_combined_hecm_originations{file_suffix}.parquet'
-    df.sink_parquet(save_file)
+    save_file = save_folder / f'fha_combined_hecm_originations{file_suffix}.parquet'
+    df.sink_parquet(str(save_file))
 
 #%% Main Routine
 if __name__ == '__main__' :
@@ -684,20 +683,20 @@ if __name__ == '__main__' :
     logging.basicConfig(level=logging.INFO)
 
     # Set Folder Paths
-    DATA_DIR = config.DATA_DIR
-    RAW_DIR = config.RAW_DIR
-    CLEAN_DIR = config.CLEAN_DIR
+    DATA_DIR = Path(config.DATA_DIR)
+    RAW_DIR = Path(config.RAW_DIR)
+    CLEAN_DIR = Path(config.CLEAN_DIR)
 
     # Create Data Folders
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(RAW_DIR, exist_ok=True)
-    os.makedirs(CLEAN_DIR, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 
     ## Single Family
     # Convert Snapshots
     DATA_FOLDER = RAW_DIR / 'single_family'
     SAVE_FOLDER = CLEAN_DIR / 'single_family'
-    os.makedirs(SAVE_FOLDER, exist_ok=True)
+    SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
     # convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
@@ -709,7 +708,7 @@ if __name__ == '__main__' :
     # Convert HECM Snapshots
     DATA_FOLDER = RAW_DIR / 'hecm'
     SAVE_FOLDER = CLEAN_DIR / 'hecm'
-    os.makedirs(SAVE_FOLDER, exist_ok=True)
+    SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
     # convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
