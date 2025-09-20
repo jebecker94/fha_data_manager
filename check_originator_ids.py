@@ -1,6 +1,11 @@
-import polars as pl
 import glob
+import logging
 from pathlib import Path
+
+import polars as pl
+
+
+logger = logging.getLogger(__name__)
 
 def analyze_lender_relationships(data_path: str | Path) -> None:
     """
@@ -10,11 +15,11 @@ def analyze_lender_relationships(data_path: str | Path) -> None:
         data_path: Path to the parquet file containing FHA data
     """
     # Load the data
-    print(f"Loading data from {data_path}...")
+    logger.info("Loading data from %s...", data_path)
     df = pl.scan_parquet(data_path)
     
     # Basic originator analysis
-    print("\n=== Basic Originator Statistics ===")
+    logger.info("\n=== Basic Originator Statistics ===")
     originator_stats = (
         df.select([
             pl.col("Originating Mortgagee"),
@@ -30,13 +35,25 @@ def analyze_lender_relationships(data_path: str | Path) -> None:
     missing_orig_name = originator_stats.filter(pl.col("Originating Mortgagee").is_null()).height
     has_sponsor = originator_stats.filter(pl.col("Sponsor Name").is_not_null()).height
     
-    print(f"Total loans: {total_loans:,}")
-    print(f"Loans missing originator ID: {missing_orig_id:,} ({missing_orig_id/total_loans*100:.1f}%)")
-    print(f"Loans missing originator name: {missing_orig_name:,} ({missing_orig_name/total_loans*100:.1f}%)")
-    print(f"Loans with sponsors: {has_sponsor:,} ({has_sponsor/total_loans*100:.1f}%)")
+    logger.info("Total loans: %s", f"{total_loans:,}")
+    logger.info(
+        "Loans missing originator ID: %s (%0.1f%%)",
+        f"{missing_orig_id:,}",
+        missing_orig_id / total_loans * 100,
+    )
+    logger.info(
+        "Loans missing originator name: %s (%0.1f%%)",
+        f"{missing_orig_name:,}",
+        missing_orig_name / total_loans * 100,
+    )
+    logger.info(
+        "Loans with sponsors: %s (%0.1f%%)",
+        f"{has_sponsor:,}",
+        has_sponsor / total_loans * 100,
+    )
     
     # Analyze sponsor presence when originator ID is missing
-    print("\n=== Sponsor Presence Analysis ===")
+    logger.info("\n=== Sponsor Presence Analysis ===")
     missing_id_analysis = (
         originator_stats
         .filter(pl.col("Originating Mortgagee Number").is_null())
@@ -47,11 +64,11 @@ def analyze_lender_relationships(data_path: str | Path) -> None:
         .agg(pl.len().alias("count"))
         .sort("count", descending=True)
     )
-    print("\nBreakdown of loans with missing originator ID:")
-    print(missing_id_analysis)
+    logger.info("\nBreakdown of loans with missing originator ID:")
+    logger.info("\n%s", missing_id_analysis)
     
     # Analyze most common sponsor-originator relationships
-    print("\n=== Top Sponsor-Originator Relationships ===")
+    logger.info("\n=== Top Sponsor-Originator Relationships ===")
     relationship_analysis = (
         df.group_by([
             "Originating Mortgagee",
@@ -67,11 +84,11 @@ def analyze_lender_relationships(data_path: str | Path) -> None:
         ])
     )
     
-    print("\nTop 10 relationships by loan count:")
-    print(relationship_analysis.head(10))
+    logger.info("\nTop 10 relationships by loan count:")
+    logger.info("\n%s", relationship_analysis.head(10))
     
     # Analyze patterns for originators with missing IDs
-    print("\n=== Analysis of Originators with Missing IDs ===")
+    logger.info("\n=== Analysis of Originators with Missing IDs ===")
     missing_id_detail = (
         df.filter(pl.col("Originating Mortgagee Number").is_null())
         .group_by(["Originating Mortgagee", "Sponsor Name", "Sponsor Number"])
@@ -80,11 +97,11 @@ def analyze_lender_relationships(data_path: str | Path) -> None:
         .collect()
     )
     
-    print("\nTop 10 originators with missing IDs:")
-    print(missing_id_detail.head(10))
+    logger.info("\nTop 10 originators with missing IDs:")
+    logger.info("\n%s", missing_id_detail.head(10))
     
     # Analyze unique relationships
-    print("\n=== Relationship Pattern Analysis ===")
+    logger.info("\n=== Relationship Pattern Analysis ===")
     originator_sponsor_patterns = (
         df.group_by("Originating Mortgagee")
         .agg([
@@ -102,8 +119,8 @@ def analyze_lender_relationships(data_path: str | Path) -> None:
         (pl.col("unique_orig_ids") > 1) | (pl.col("unique_sponsors") > 1)
     ).sort("total_loans", descending=True)
     
-    print("\nOriginators with multiple relationships (top 10):")
-    print(multiple_relationships.head(10))
+    logger.info("\nOriginators with multiple relationships (top 10):")
+    logger.info("\n%s", multiple_relationships.head(10))
 
 def main():
     # Find the most recent combined data file
@@ -115,4 +132,5 @@ def main():
     analyze_lender_relationships(data_path)
 
 if __name__ == "__main__":
-    main() 
+    logging.basicConfig(level=logging.INFO)
+    main()

@@ -1,12 +1,17 @@
 # Import Packages
+import glob
+import logging
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from pathlib import Path
-import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Tuple
-import numpy as np
-import glob
+
+
+logger = logging.getLogger(__name__)
 
 def load_combined_data(data_path: Path) -> pd.DataFrame:
     """
@@ -18,9 +23,9 @@ def load_combined_data(data_path: Path) -> pd.DataFrame:
     Returns:
         DataFrame containing the combined data
     """
-    print(f"Loading data from {data_path}...")
+    logger.info("Loading data from %s...", data_path)
     df = pq.read_table(data_path).to_pandas()
-    print(f"Loaded {len(df):,} records")
+    logger.info("Loaded %s records", f"{len(df):,}")
     return df
 
 def analyze_lender_activity(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
@@ -107,10 +112,10 @@ def analyze_loan_characteristics(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def print_summary_statistics(stats_dict: Dict[str, pd.DataFrame], section: str):
     """Print formatted summary statistics."""
-    print(f"\n{'='*80}\n{section}\n{'='*80}")
+    logger.info("\n%s\n%s\n%s", "=" * 80, section, "=" * 80)
     for name, df in stats_dict.items():
-        print(f"\n{name.replace('_', ' ').title()}:")
-        print(df)
+        logger.info("\n%s:", name.replace('_', ' ').title())
+        logger.info("\n%s", df)
 
 def main():
 
@@ -158,4 +163,5 @@ def main():
     plt.savefig('output/loan_purpose_dist.png')
 
 if __name__ == "__main__":
-    main() 
+    logging.basicConfig(level=logging.INFO)
+    main()

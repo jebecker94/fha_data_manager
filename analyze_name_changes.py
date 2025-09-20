@@ -1,8 +1,13 @@
-import polars as pl
 import glob
+import logging
 from pathlib import Path
 from typing import Dict, Set, Tuple
+
 import pandas as pd
+import polars as pl
+
+
+logger = logging.getLogger(__name__)
 
 def analyze_name_changes(data_path: str | Path) -> None:
     """
@@ -11,7 +16,7 @@ def analyze_name_changes(data_path: str | Path) -> None:
     Args:
         data_path: Path to the parquet file containing FHA data
     """
-    print(f"Loading data from {data_path}...")
+    logger.info("Loading data from %s...", data_path)
     df = pl.scan_parquet(data_path)
     
     # Create year-month field for temporal analysis
@@ -24,10 +29,10 @@ def analyze_name_changes(data_path: str | Path) -> None:
     )
     
     # Analyze specific cases (like Quicken/Rocket) first for visibility
-    print("\n=== Detailed Analysis of Notable Cases ===")
+    logger.info("\n=== Detailed Analysis of Notable Cases ===")
     
     # Analyze Quicken/Rocket transition
-    print("\nAnalyzing Quicken/Rocket transition:")
+    logger.info("\nAnalyzing Quicken/Rocket transition:")
     quicken_analysis = (
         df.filter(
             pl.col("Originating Mortgagee Number") == 71970
@@ -40,13 +45,18 @@ def analyze_name_changes(data_path: str | Path) -> None:
         .sort("period")
         .collect()
     )
-    print("\nName changes for ID 71970 (Quicken/Rocket):")
+    logger.info("\nName changes for ID 71970 (Quicken/Rocket):")
     for row in quicken_analysis.iter_rows(named=True):
         if any('QUICKEN' in name or 'ROCKET' in name for name in row['names']):
-            print(f"{row['period']}: {', '.join(row['names'])} ({row['loan_count']:,} loans)")
+            logger.info(
+                "%s: %s (%s loans)",
+                row['period'],
+                ', '.join(row['names']),
+                f"{row['loan_count']:,}",
+            )
     
     # Analyze Freedom Mortgage transition
-    print("\nAnalyzing Freedom Mortgage transition:")
+    logger.info("\nAnalyzing Freedom Mortgage transition:")
     freedom_analysis = (
         df.filter(
             pl.col("Originating Mortgagee Number") == 75159
@@ -59,13 +69,18 @@ def analyze_name_changes(data_path: str | Path) -> None:
         .sort("period")
         .collect()
     )
-    print("\nName changes for ID 75159 (Freedom):")
+    logger.info("\nName changes for ID 75159 (Freedom):")
     for row in freedom_analysis.iter_rows(named=True):
         if any('FREEDOM' in name for name in row['names']):
-            print(f"{row['period']}: {', '.join(row['names'])} ({row['loan_count']:,} loans)")
+            logger.info(
+                "%s: %s (%s loans)",
+                row['period'],
+                ', '.join(row['names']),
+                f"{row['loan_count']:,}",
+            )
     
     # Analyze originator name changes
-    print("\n=== Analyzing Originator Name Changes Over Time ===")
+    logger.info("\n=== Analyzing Originator Name Changes Over Time ===")
     originator_changes = (
         df.select([
             "period",
@@ -103,18 +118,18 @@ def analyze_name_changes(data_path: str | Path) -> None:
                 id_name_changes[id_num]["transitions"].append((period, names))
     
     # Print significant name changes
-    print("\nTop 10 IDs with most name changes:")
-    for id_num, data in sorted(id_name_changes.items(), 
-                             key=lambda x: len(x[1]["transitions"]), 
+    logger.info("\nTop 10 IDs with most name changes:")
+    for id_num, data in sorted(id_name_changes.items(),
+                             key=lambda x: len(x[1]["transitions"]),
                              reverse=True)[:10]:
-        print(f"\nID {id_num} ({len(data['transitions'])} changes):")
+        logger.info("\nID %s (%s changes):", id_num, len(data['transitions']))
         for period, names in data["transitions"]:
-            print(f"  {period}: {', '.join(names)}")
+            logger.info("  %s: %s", period, ', '.join(names))
     
     # Analyze consistency of changes
-    print("\n=== Analyzing Change Patterns ===")
+    logger.info("\n=== Analyzing Change Patterns ===")
     for id_num in [71970, 75159]:  # Quicken and Freedom
-        print(f"\nAnalyzing change consistency for ID {id_num}:")
+        logger.info("\nAnalyzing change consistency for ID %s:", id_num)
         
         # Get all periods for this ID
         id_timeline = (
@@ -140,9 +155,9 @@ def analyze_name_changes(data_path: str | Path) -> None:
                 changes.append((row["period"], current_names))
                 previous_names = current_names
         
-        print(f"Found {len(changes)} distinct name sets:")
+        logger.info("Found %s distinct name sets:", len(changes))
         for period, names in changes:
-            print(f"  {period}: {', '.join(names)}")
+            logger.info("  %s: %s", period, ', '.join(names))
 
 def main():
     # Find the most recent combined data file
@@ -154,4 +169,5 @@ def main():
     analyze_name_changes(data_path)
 
 if __name__ == "__main__":
-    main() 
+    logging.basicConfig(level=logging.INFO)
+    main()

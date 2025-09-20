@@ -7,18 +7,23 @@ Last Modified on Sunday March 23 2025
 
 ## Setup
 # Import Packages
-import os
-import glob
-import pandas as pd
-import pyarrow as pa
-import polars as pl
-import pyarrow.parquet as pq
-from pathlib import Path
-from mtgdicts import FHADictionary
-import config
-import addfips
-import numpy as np
 import datetime
+import glob
+import logging
+import os
+from pathlib import Path
+
+import addfips
+import config
+import numpy as np
+import pandas as pd
+import polars as pl
+import pyarrow as pa
+import pyarrow.parquet as pq
+from mtgdicts import FHADictionary
+
+
+logger = logging.getLogger(__name__)
 
 #%% Support Functions
 # Standardize County Names
@@ -35,7 +40,7 @@ def standardize_county_names(df: pl.LazyFrame, county_col: str = "Property Count
         Polars LazyFrame with standardized county names
     """
 
-    print("Standardizing county names...")
+    logger.info("Standardizing county names...")
 
     # First convert empty values and "NAN"/"None" to empty strings
     df = df.with_columns(
@@ -145,14 +150,14 @@ def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_
     Returns:
         Polars LazyFrame with added FIPS column
     """
-    print("Starting FIPS code addition process...")
+    logger.info("Starting FIPS code addition process...")
 
     # Standardize the main dataframe's county names
-    print("Standardizing main dataframe county names...")
+    logger.info("Standardizing main dataframe county names...")
     df = standardize_county_names(df, state_col=state_col, county_col=county_col)
 
     # Get unique state/county pairs and standardize them
-    print("Getting unique county/state pairs...")
+    logger.info("Getting unique county/state pairs...")
     unique_counties = df.select([state_col, county_col]).unique()
     unique_counties = standardize_county_names(unique_counties, state_col=state_col, county_col=county_col)
     
@@ -160,11 +165,11 @@ def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_
     county_map = []
     
     # Initialize AddFIPS
-    print("Initializing AddFIPS...")
+    logger.info("Initializing AddFIPS...")
     af = addfips.AddFIPS()
     
     # Generate FIPS codes for each unique county
-    print("Generating FIPS codes for unique counties...")
+    logger.info("Generating FIPS codes for unique counties...")
     for row in unique_counties.collect().iter_rows():
         df_row = pl.LazyFrame({state_col: [row[0]], county_col: [row[1]]})
         fips = af.get_county_fips(row[1], row[0])
@@ -172,12 +177,12 @@ def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_
         county_map.append(df_row)
     
     # Combine all county mappings
-    print("Combining county mappings...")
+    logger.info("Combining county mappings...")
     county_map = pl.concat(county_map, how='diagonal_relaxed')
     county_map = county_map.sort([fips_col, state_col, county_col])
 
     # Join FIPS codes back to original dataframe
-    print("Joining FIPS codes back to main dataframe...")
+    logger.info("Joining FIPS codes back to main dataframe...")
     df = df.join(county_map, on=[state_col, county_col], how="left")
 
     # Return DataFrame
@@ -191,7 +196,7 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
     Note: Requires the user to first run the convert_fha_sf_snapshots and convert_fha_hecm_snapshots functions.
     """
 
-    print("Creating lender ID to name crosswalk...")
+    logger.info("Creating lender ID to name crosswalk...")
 
     # Create crosswalk
     df = []
@@ -202,7 +207,7 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
     for file in sf_files:
 
         # Get file date
-        print('Get institution data from:', file)
+        logger.info("Get institution data from: %s", file)
         file_date = file.split('_')[-1].split('.')[0]
         file_date = pd.to_datetime(file_date, format='%Y%m%d')
 
@@ -227,7 +232,7 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.Lazy
     for file in hecm_files:
 
         # Get file date
-        print('Get institution data from:', file)
+        logger.info("Get institution data from: %s", file)
         file_date = file.split('_')[-1].split('.')[0]
         file_date = pd.to_datetime(file_date, format='%Y%m%d')
 
@@ -373,7 +378,7 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
                 if not os.path.exists(output_file) or overwrite :
 
                     # Display Progress
-                    print('Reading and Converting File:', input_file)
+                    logger.info('Reading and Converting File: %s', input_file)
 
                     # Read File
                     xls = pd.ExcelFile(input_file)
@@ -399,7 +404,7 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
                 else :
 
                     # Display Progress
-                    print('File', output_file, 'already exists!')
+                    logger.info('File %s already exists!', output_file)
 
 # Combine FHA Single-Family Snapshots
 def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int=2010, max_year: int=2024, file_suffix: str | None=None) -> None:
@@ -584,7 +589,7 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                 if not os.path.exists(output_file) or overwrite :
 
                     # Display Progress
-                    print('Reading and Converting File:', input_file)
+                    logger.info('Reading and Converting File: %s', input_file)
 
                     # Read File
                     xls = pd.ExcelFile(input_file)
@@ -610,11 +615,11 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                         try :
                             df.to_parquet(output_file, index=False)
                         except Exception as e :
-                            print(f'Error saving file {output_file}: {e}')
+                            logger.error('Error saving file %s: %s', output_file, e)
                 else :
 
                     # Display Progress
-                    print('File', output_file, 'already exists!')
+                    logger.info('File %s already exists!', output_file)
 
 # Combine FHA HECM Snapshots
 def combine_fha_hecm_snapshots(data_folder: Path, save_folder: Path, min_year: int = 2012, max_year: int = 2024, file_suffix: str | None = None) -> None:
@@ -663,6 +668,8 @@ def combine_fha_hecm_snapshots(data_folder: Path, save_folder: Path, min_year: i
 
 #%% Main Routine
 if __name__ == '__main__' :
+
+    logging.basicConfig(level=logging.INFO)
 
     # Set Folder Paths
     DATA_DIR = config.DATA_DIR
