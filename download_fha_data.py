@@ -1,6 +1,6 @@
 # Import Packages
 import os
-import requests
+import requests  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from pathlib import Path
@@ -36,6 +36,9 @@ def download_excel_files_from_url(
         include_zip: Whether to download ``.zip`` archives in addition to spreadsheets.
         file_type: When provided (``"sf"`` or ``"hecm"``), determines the prefix used
             when standardising filenames. If ``None`` the original filenames are kept.
+
+    Returns:
+        ``None``. The function performs downloads for their side-effects only.
     """
 
     try:
@@ -63,7 +66,7 @@ def download_excel_files_from_url(
             href = link_tag['href']
             
             # Check if the link points to an Excel file
-            excel_extensions = ('.xlsx', '.xls', '.xlsm', '.xlsb')
+            excel_extensions: tuple[str, ...] = ('.xlsx', '.xls', '.xlsm', '.xlsb')
             if include_zip : # Add Zip (presumed Excel Contents)
                 excel_extensions += ('.zip',)
             if href.lower().endswith(excel_extensions):
@@ -207,8 +210,16 @@ def find_month_in_string(text: str) -> int | None:
 
 # Handle File Dates
 def handle_file_dates(file_name: str) -> str:
-    """
-    Takes a file name and creates a standardized suffix in the form _YYYYMM.
+    """Return a ``_YYYYMM`` suffix derived from ``file_name``.
+
+    The helper is retained for backwards compatibility with scripts that expect a
+    year/month suffix rather than a full FHA-standard filename.
+
+    Args:
+        file_name: The filename (with or without a path component) to analyse.
+
+    Returns:
+        A suffix in the form ``_YYYYMM``.
     """
 
     # Get Base Name of the File
@@ -224,7 +235,7 @@ def handle_file_dates(file_name: str) -> str:
     return ym_suffix
 
 # Standardize Filename
-def standardize_filename(original_filename: str, file_type: str) -> str:
+def standardize_filename(original_filename: str, file_type: str | None) -> str:
     """Convert FHA snapshot filenames into a standard ``YYYYMMDD`` form.
 
     Handles multiple filename patterns:
@@ -235,6 +246,7 @@ def standardize_filename(original_filename: str, file_type: str) -> str:
     Args:
         original_filename: The original filename, with or without a path component.
         file_type: Indicates which naming convention to apply (``"sf"`` or ``"hecm"``).
+            If ``None`` the original filename is returned.
 
     Returns:
         A standardised filename matching the project's naming conventions. If the
@@ -245,6 +257,10 @@ def standardize_filename(original_filename: str, file_type: str) -> str:
     """
     # Get base name without path
     base_name = os.path.basename(original_filename)
+
+    if file_type is None:
+        return base_name
+
     extension = os.path.splitext(base_name)[1]
     
     try:
@@ -286,15 +302,17 @@ def standardize_filename(original_filename: str, file_type: str) -> str:
         return base_name  # Return original filename if conversion fails
 
 # Process Zip Files
-def process_zip_file(zip_path: str, destination_folder: str, file_type: str) -> None:
-    """
-    Extracts and processes files from a zip archive, applying the same standardization
-    rules as direct downloads.
+def process_zip_file(zip_path: str, destination_folder: str, file_type: str | None) -> None:
+    """Extract files from ``zip_path`` into ``destination_folder``.
+
+    Any spreadsheets discovered inside the archive are renamed using
+    :func:`standardize_filename` so long as ``file_type`` is provided.
 
     Args:
-        zip_path (str): Path to the zip file
-        destination_folder (str): Folder where processed files should be saved
-        file_type (str): Type of file ('sf' or 'hecm') for standardization
+        zip_path: Path to the zip file to extract.
+        destination_folder: Folder where processed files should be saved.
+        file_type: Snapshot type used to standardise filenames (``"sf"`` or
+            ``"hecm"``). When ``None`` filenames are preserved as extracted.
     """
     try:
         # Get the standardized name of the zip file (without .zip extension)
@@ -324,7 +342,7 @@ def process_zip_file(zip_path: str, destination_folder: str, file_type: str) -> 
                                 new_filename = standardize_filename(file, file_type)
                             except ValueError as e:
                                 # If no date in filename and we have zip date info, use zip's date
-                                if has_zip_date:
+                                if has_zip_date and file_type is not None:
                                     date_str = f"{zip_year}{str(zip_month).zfill(2)}01"
                                     extension = os.path.splitext(file)[1]
                                     if file_type == 'sf':

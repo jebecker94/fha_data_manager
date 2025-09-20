@@ -27,18 +27,25 @@ logger = logging.getLogger(__name__)
 
 #%% Support Functions
 # Standardize County Names
-def standardize_county_names(df: pl.LazyFrame, county_col: str = "Property County", state_col: str = "Property State") -> pl.LazyFrame:
-    """
-    Standardize county names to match FIPS database format.
+def standardize_county_names(
+    df: pl.LazyFrame,
+    county_col: str = "Property County",
+    state_col: str = "Property State",
+) -> pl.LazyFrame:
+    """Standardise county names so they align with the FIPS dataset.
 
-    Note: This function contains considerable hardcoding of ccounty names that reflects the idiosyncrasies of the FHA single family snapshot dataset. Not suitable for deployment in other projects.
-    
     Args:
-        df: Input Polars LazyFrame
-        
+        df: The snapshot data containing county information.
+        county_col: Column containing county names to standardise.
+        state_col: Column containing the two-letter state abbreviation.
+
     Returns:
-        Polars LazyFrame with standardized county names
+        A ``LazyFrame`` with harmonised county naming.
     """
+
+    # Note: This function contains considerable hardcoding of county names that reflects
+    # the idiosyncrasies of the FHA single family snapshot dataset. Not suitable for
+    # deployment in other projects.
 
     logger.info("Standardizing county names...")
 
@@ -138,17 +145,22 @@ def standardize_county_names(df: pl.LazyFrame, county_col: str = "Property Count
     return df
 
 # Add county FIPS codes to the dataframe
-def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_col: str = "Property County", fips_col: str = "FIPS") -> pl.LazyFrame:
-    """
-    Add FIPS codes to a Polars DataFrame containing state and county columns.
-    
+def add_county_fips(
+    df: pl.LazyFrame,
+    state_col: str = "Property State",
+    county_col: str = "Property County",
+    fips_col: str = "FIPS",
+) -> pl.LazyFrame:
+    """Add FIPS codes to a dataset with state and county columns.
+
     Args:
-        df: Input Polars LazyFrame
-        state_col: Name of the state column (default: "Property State")
-        county_col: Name of the county column (default: "Property County")
-        
+        df: Dataset containing the state and county columns to enrich.
+        state_col: Name of the state column.
+        county_col: Name of the county column.
+        fips_col: Name of the output column that will receive the concatenated FIPS code.
+
     Returns:
-        Polars LazyFrame with added FIPS column
+        A ``LazyFrame`` containing a ``fips_col`` column with county-level FIPS codes.
     """
     logger.info("Starting FIPS code addition process...")
 
