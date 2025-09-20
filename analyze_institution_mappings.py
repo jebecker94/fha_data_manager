@@ -1,11 +1,16 @@
-import pandas as pd
 import glob
+import logging
 from datetime import datetime
-import numpy as np
 from pathlib import Path
 
-def log_message(message, log_file=None):
-    print(message)  # Print to console
+import numpy as np
+import pandas as pd
+
+
+logger = logging.getLogger(__name__)
+
+def log_message(message, log_file=None, level=logging.INFO):
+    logger.log(level, message)
     if log_file:
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(message + '\n')
@@ -21,6 +26,8 @@ if __name__ == '__main__':
         if log_file.exists():
             log_file.unlink()
         
+        logging.basicConfig(level=logging.INFO)
+
         log_message("Starting institution mapping analysis...", log_file)
         
         # Get all parquet files
@@ -28,7 +35,7 @@ if __name__ == '__main__':
         log_message(f"Found {len(files)} parquet files to process", log_file)
         
         if not files:
-            log_message("No parquet files found! Please check the data directory.", log_file)
+            log_message("No parquet files found! Please check the data directory.", log_file, level=logging.WARNING)
             raise FileNotFoundError("No parquet files found")
         
         # Initialize lists to store mapping data
@@ -65,11 +72,11 @@ if __name__ == '__main__':
                             'date': date
                         })
             except Exception as e:
-                log_message(f"Error processing {file}: {str(e)}", log_file)
+                log_message(f"Error processing {file}: {str(e)}", log_file, level=logging.ERROR)
                 continue
         
         if not mapping_data:
-            log_message("No mapping data collected! Please check the file contents.", log_file)
+            log_message("No mapping data collected! Please check the file contents.", log_file, level=logging.WARNING)
             raise ValueError("No mapping data collected")
             
         log_message(f"\nCreating mapping DataFrame from {len(mapping_data)} records...", log_file)
@@ -174,8 +181,8 @@ if __name__ == '__main__':
         log_message("\nAnalysis complete. Results saved in output directory.", log_file)
         
     except Exception as e:
-        log_message(f"Error during analysis: {str(e)}", log_file)
+        log_message(f"Error during analysis: {str(e)}", log_file, level=logging.ERROR)
         import traceback
-        log_message("\nTraceback:", log_file)
-        log_message(traceback.format_exc(), log_file)
+        log_message("\nTraceback:", log_file, level=logging.ERROR)
+        log_message(traceback.format_exc(), log_file, level=logging.ERROR)
         raise  # Re-raise the exception for interactive debugging

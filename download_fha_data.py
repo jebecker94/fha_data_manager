@@ -12,6 +12,7 @@ import tempfile
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Download Excel Files from URL
 def download_excel_files_from_url(
@@ -49,7 +50,7 @@ def download_excel_files_from_url(
         }
 
         # Get the webpage content
-        logging.info(f"Fetching content from URL: {page_url}")
+        logger.info("Fetching content from URL: %s", page_url)
         response = requests.get(page_url, headers=headers, timeout=30)
         response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
 
@@ -78,7 +79,7 @@ def download_excel_files_from_url(
                     if not file_name: # Handle cases where path might end in /
                         file_name = f"downloaded_excel_{excel_links_found}{Path(excel_url).suffix}"
                 except Exception as e:
-                    logging.warning(f"Could not derive filename from URL {excel_url}: {e}. Using a generic name.")
+                    logger.warning("Could not derive filename from URL %s: %s. Using a generic name.", excel_url, e)
                     file_name = f"excel_file_{excel_links_found}{Path(href).suffix or '.xlsx'}"
 
                 # Standardize the filename
@@ -87,7 +88,7 @@ def download_excel_files_from_url(
                 # Only Download New Files
                 file_path = dest_path / standardized_name
                 if not os.path.exists(file_path) :
-                    logging.info(f"Downloading {excel_url} to {file_path}...")
+                    logger.info("Downloading %s to %s...", excel_url, file_path)
                     try:
 
                         # Stream File Content to Local File
@@ -98,11 +99,11 @@ def download_excel_files_from_url(
                                 f.write(chunk)
                         
                         # Display Progress
-                        logging.info(f"Successfully downloaded {standardized_name}")
+                        logger.info("Successfully downloaded %s", standardized_name)
 
                         # Process zip files if applicable
                         if file_path.suffix.lower() == '.zip':
-                            logging.info(f"Processing zip file: {standardized_name}")
+                            logger.info("Processing zip file: %s", standardized_name)
                             process_zip_file(str(file_path), str(dest_path), file_type)
 
                         # Courtesy Pause
@@ -110,23 +111,23 @@ def download_excel_files_from_url(
 
                     # Display Download Error
                     except requests.exceptions.RequestException as e:
-                        logging.error(f"Error downloading {excel_url}: {e}")
+                        logger.error("Error downloading %s: %s", excel_url, e)
 
                     # Display Inpput/Output Error
                     except IOError as e:
-                        logging.error(f"Error saving file {standardized_name} to {file_path}: {e}")
+                        logger.error("Error saving file %s to %s: %s", standardized_name, file_path, e)
         
         # Display message if no excel links are discovered
         if excel_links_found == 0:
-            logging.info("No Excel file links found on the page.")
+            logger.info("No Excel file links found on the page.")
 
     # Display Requests Exception
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching URL {page_url}: {e}")
+        logger.error("Error fetching URL %s: %s", page_url, e)
 
     # Display Unexpected Error
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}")
+        logger.error("An unexpected error occurred: %s", e)
 
 # Find Years in String
 def find_years_in_string(text: str) -> int:
@@ -212,7 +213,7 @@ def handle_file_dates(file_name: str) -> str:
 
     # Get Base Name of the File
     base_file_name = os.path.basename(file_name)
-    print(base_file_name)
+    logger.debug("Handling file name: %s", base_file_name)
 
     # Extract Year/Month and create standard suffix
     year = find_years_in_string(base_file_name)
@@ -281,7 +282,7 @@ def standardize_filename(original_filename: str, file_type: str) -> str:
         return new_filename
         
     except Exception as e:
-        logging.error(f"Error standardizing filename {base_name}: {e}")
+        logger.error("Error standardizing filename %s: %s", base_name, e)
         return base_name  # Return original filename if conversion fails
 
 # Process Zip Files
@@ -330,26 +331,26 @@ def process_zip_file(zip_path: str, destination_folder: str, file_type: str) -> 
                                         new_filename = f"fha_sf_snapshot_{date_str}{extension}"
                                     elif file_type == 'hecm':
                                         new_filename = f"fha_hecm_snapshot_{date_str}{extension}"
-                                    logging.info(f"Using zip file date for {file}: {new_filename}")
+                                    logger.info("Using zip file date for %s: %s", file, new_filename)
                                 else:
                                     # If no date information available anywhere, use original filename
                                     new_filename = file
-                                    logging.warning(f"No date information found for {file}, keeping original name")
+                                    logger.warning("No date information found for %s, keeping original name", file)
                             
                             dest_path = os.path.join(destination_folder, new_filename)
                             
                             # Copy file to destination with standardized name
                             if not os.path.exists(dest_path):
-                                logging.info(f"Processing extracted file: {file} -> {new_filename}")
+                                logger.info("Processing extracted file: %s -> %s", file, new_filename)
                                 with open(source_path, 'rb') as src, open(dest_path, 'wb') as dst:
                                     dst.write(src.read())
                             else:
-                                logging.info(f"Skipping existing file: {new_filename}")
+                                logger.info("Skipping existing file: %s", new_filename)
                                 
     except zipfile.BadZipFile as e:
-        logging.error(f"Error processing zip file {zip_path}: {e}")
+        logger.error("Error processing zip file %s: %s", zip_path, e)
     except Exception as e:
-        logging.error(f"Unexpected error processing zip file {zip_path}: {e}")
+        logger.error("Unexpected error processing zip file %s: %s", zip_path, e)
 
 # Main Routine
 if __name__ == "__main__":
