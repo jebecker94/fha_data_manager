@@ -1,0 +1,2 @@
+category,file_name,relative_to_project,relative_to_data,parent_directory,suffix,size_bytes,size_mb,size_readable,modified_utc,created_utc
+data,fha_combined_hecm_originations_201201-202502.parquet,data/fha_combined_hecm_originations_201201-202502.parquet,fha_combined_hecm_originations_201201-202502.parquet,.,parquet,10005790,9.5423,9.54 MB,2025-09-27T17:47:54.963076+00:00,2025-09-27T17:47:54.963076+00:00
