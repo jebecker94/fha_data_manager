@@ -1,0 +1,89 @@
+FHA Data Manager – Agent Guide
+
+Schemas
+
+Single Family (cleaned monthly snapshots)
+- Property State: string
+- Property City: string
+- Property County: string
+- Property Zip: int32
+- Originating Mortgagee: string
+- Originating Mortgagee Number: int32
+- Sponsor Name: string
+- Sponsor Number: int32
+- Down Payment Source: string
+- Non Profit Number: int64
+- Product Type: string
+- Loan Purpose: string
+- Property Type: string
+- Interest Rate: float64
+- Mortgage Amount: int64
+- Year: int16
+- Month: int16
+- FHA_Index: string
+
+HECM (cleaned monthly snapshots)
+- Property State: string
+- Property City: string
+- Property County: string
+- Property Zip: int32
+- Originating Mortgagee: string
+- Originating Mortgagee Number: int32
+- Sponsor Name: string
+- Sponsor Number: int32
+- Sponsor Originator: string
+- NMLS: int64
+- Standard/Saver: string
+- Purchase/Refinance: string
+- Rate Type: string
+- Interest Rate: float64
+- Initial Principal Limit: float64
+- Maximum Claim Amount: float64
+- Year: int16
+- Month: int16
+- Current Servicer ID: int64
+- Previous Servicer ID: int64
+- FHA_Index: string
+
+Where data live
+- Raw downloads: data/raw/single_family, data/raw/hecm
+- Cleaned monthly parquet: data/clean/single_family, data/clean/hecm
+- Combined outputs: data/fha_combined_sf_originations_*.parquet, data/fha_combined_hecm_originations_*.parquet
+- Optional partitioned “database”: <DATA_DIR>/database/{single_family|hecm}/snapshot_month=YYYY-MM/*.parquet
+
+Key scripts
+- download_fha_data.py: Downloads snapshots and standardizes filenames (fha_sf_snapshot_YYYYMM01.*, fha_hecm_snapshot_YYYYMM01.*)
+- import_fha_data.py: Cleans monthly files to parquet and combines by year range
+- save_clean_snapshots_to_db.py: Builds a partitioned parquet dataset for fast querying
+
+Typical workflow
+1) Download snapshots
+   python download_fha_data.py
+
+2) Clean monthly files and write combined files
+   python import_fha_data.py
+   # Produces monthly parquet in data/clean/{single_family|hecm} and combined files in data/
+
+3) Build partitioned dataset (optional, aids querying)
+   python save_clean_snapshots_to_db.py --dataset all --overwrite
+   # Destination defaults to <DATA_DIR>/database. Use --output-dir to override.
+
+Interacting with data (examples)
+- Read combined Single Family in Polars
+   import polars as pl
+   files = pl.read_csv('data/data_inventory.csv')  # optional index
+   df = pl.scan_parquet('data/fha_combined_sf_originations_*.parquet')
+
+- Read monthly cleaned HECM snapshots
+   import polars as pl
+   lf = pl.scan_parquet('data/clean/hecm/*.parquet')
+
+- Query partitioned dataset with PyArrow/DuckDB
+   # After running save_clean_snapshots_to_db.py
+   from pyarrow import dataset as ds
+   tbl = ds.dataset('data/database/single_family', format='parquet')
+
+Notes
+- Cleaners enforce schema with the dictionaries in mtgdicts.py.
+- Required columns for downstream tools include Year and Month.
+- FHA_Index is unique within each monthly file and built from YYYYMM01_row.

@@ -143,11 +143,18 @@ def build_partitioned_dataset(
         "Writing %s cleaned snapshots to %s", dataset_name, dataset_destination
     )
 
+    tables = _table_generator(parquet_files, dataset_name)
+    for table in tables:
+        schema = table.schema
+        print(schema)
+        break
+
     ds.write_dataset(
-        data=_table_generator(parquet_files, dataset_name),
+        data=tables,
+        schema=schema,
         base_dir=str(dataset_destination),
         format="parquet",
-        partitioning=ds.partitioning(field_names=[PARTITION_COLUMN]),
+        partitioning=ds.partitioning(schema=schema),
         existing_data_behavior="overwrite_or_ignore",
     )
 
