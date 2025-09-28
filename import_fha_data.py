@@ -418,7 +418,13 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
                     logger.info('File %s already exists!', output_file)
 
 # Combine FHA Single-Family Snapshots
-def combine_fha_sf_snapshots(data_folder: Path, save_folder: Path, min_year: int=2010, max_year: int=2024, file_suffix: str | None=None) -> None:
+def combine_fha_sf_snapshots(
+    data_folder: Path,
+    save_folder: Path,
+    min_year: int = 2010,
+    max_year: int = 2024,
+    file_suffix: str | None = None,
+) -> None:
     """
     Combines cleaned monthly SF snapshots into a single file containing all
     years/months.
@@ -643,7 +649,13 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                     logger.info('File %s already exists!', output_file)
 
 # Combine FHA HECM Snapshots
-def combine_fha_hecm_snapshots(data_folder: Path, save_folder: Path, min_year: int = 2012, max_year: int = 2024, file_suffix: str | None = None) -> None:
+def combine_fha_hecm_snapshots(
+    data_folder: Path,
+    save_folder: Path,
+    min_year: int = 2012,
+    max_year: int = 2024,
+    file_suffix: str | None = None,
+) -> None:
     """
     Combines cleaned monthly HECM snapshots into a single file containing all
     years/months.
@@ -707,21 +719,21 @@ if __name__ == '__main__' :
     DATA_FOLDER = RAW_DIR / 'single_family'
     SAVE_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
-    # convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
+    convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
+    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202506')
 
     ## HECM
     # Convert HECM Snapshots
     DATA_FOLDER = RAW_DIR / 'hecm'
     SAVE_FOLDER = CLEAN_DIR / 'hecm'
     SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
-    # convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
+    convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
 
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'hecm'
     SAVE_FOLDER = DATA_DIR
-    # combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2025, file_suffix='_201201-202502')
+    combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2025, file_suffix='_201201-202506')
