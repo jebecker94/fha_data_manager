@@ -45,3 +45,16 @@ Extensive exploration suggests that the originating mortgagee and sponsor IDs an
     * To perform a match between the FHA single family mortgage data and the CoreLogic data, one can do the following:
     1. Sample: CoreLogic FHA loans identified using the loan type indicator
     2. Match Variables: Location (state, county, zip), loan size (to the dollar), interest rate (for a small number of mostly adjustable-rate CoreLogic observations), date (fuzzy, allowing for 1-2 months between the CoreLogic mortgage date and the FHA endorsement month/year), and lender (best to infer lender matches from an initial tight match on non-lender characteristics).
+
+## Track Your Local Data Inventory
+Use the ``log_data_inventory.py`` script to create a CSV snapshot of the raw and clean
+files you currently have stored in the project.
+
+```
+python log_data_inventory.py
+```
+
+By default the inventory is saved to ``data/data_inventory.csv`` and includes file size
+and timestamp metadata for easy review. Pass the ``--output`` flag to change the
+destination or ``--include-outside`` if you would like to inventory every file within
+the project directory, not just those located under ``data/``.

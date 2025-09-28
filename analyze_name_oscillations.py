@@ -1,9 +1,14 @@
 # Import Packages
-import polars as pl
 import glob
+import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
-from collections import defaultdict
+
+import polars as pl
+
+
+logger = logging.getLogger(__name__)
 
 # Define Function to Detect Name Oscillations
 def detect_name_oscillations(data_path: str | Path) -> None:
@@ -15,7 +20,7 @@ def detect_name_oscillations(data_path: str | Path) -> None:
     Args:
         data_path: Path to the parquet file containing FHA data
     """
-    print(f"Loading data from {data_path}...")
+    logger.info("Loading data from %s...", data_path)
     df = pl.scan_parquet(data_path)
     
     # Create year-month field for temporal analysis
@@ -29,7 +34,7 @@ def detect_name_oscillations(data_path: str | Path) -> None:
     
     # Analyze both originator and sponsor name changes
     for entity_type in ["Originator", "Sponsor"]:
-        print(f"\n=== Analyzing {entity_type} Name Oscillations ===")
+        logger.info("\n=== Analyzing %s Name Oscillations ===", entity_type)
         
         # Select relevant columns based on entity type
         name_col = "Originating Mortgagee" if entity_type == "Originator" else "Sponsor Name"
@@ -107,11 +112,22 @@ def detect_name_oscillations(data_path: str | Path) -> None:
         
         # Print results
         if oscillating_ids:
-            print(f"\nFound {len(oscillating_ids)} {entity_type}s with oscillating names:")
+            logger.info(
+                "\nFound %s %ss with oscillating names:",
+                f"{len(oscillating_ids)}",
+                entity_type,
+            )
             for id_num, data in oscillating_ids.items():
-                print(f"\nID {id_num}:")
-                print(f"Name '{data['name']}' appears in periods: {', '.join(data['periods'])}")
-                print(f"With intermediate names: {', '.join(data['intermediate_names'])}")
+                logger.info("\nID %s:", id_num)
+                logger.info(
+                    "Name '%s' appears in periods: %s",
+                    data['name'],
+                    ', '.join(data['periods']),
+                )
+                logger.info(
+                    "With intermediate names: %s",
+                    ', '.join(data['intermediate_names']),
+                )
                 
                 # Get loan counts for context
                 loan_counts = (
@@ -125,12 +141,17 @@ def detect_name_oscillations(data_path: str | Path) -> None:
                     .collect()
                 )
                 
-                print("\nDetailed timeline:")
+                logger.info("\nDetailed timeline:")
                 for row in loan_counts.iter_rows(named=True):
                     if row["loan_count"] > 0:  # Only show periods with loans
-                        print(f"  {row['period']}: {', '.join(row['names'])} ({row['loan_count']:,} loans)")
+                        logger.info(
+                            "  %s: %s (%s loans)",
+                            row['period'],
+                            ', '.join(row['names']),
+                            f"{row['loan_count']:,}",
+                        )
         else:
-            print(f"No clear oscillating patterns found for {entity_type}s")
+            logger.info("No clear oscillating patterns found for %ss", entity_type)
 
 def main():
     # Find the most recent combined data file
@@ -142,4 +163,5 @@ def main():
     detect_name_oscillations(data_path)
 
 if __name__ == "__main__":
-    main() 
+    logging.basicConfig(level=logging.INFO)
+    main()
