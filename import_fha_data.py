@@ -699,6 +699,31 @@ def combine_fha_hecm_snapshots(
     save_file = save_folder / f'fha_combined_hecm_originations{file_suffix}.parquet'
     df.sink_parquet(str(save_file))
 
+# Save Clean Snapshots to Database
+def save_clean_snapshots_to_db(data_folder: Path, save_folder: Path, min_year: int = 2010, max_year: int = 2025) -> None:
+    """
+    Saves cleaned snapshots to a database.
+    """
+    
+    # Get Files and Combine
+    df = []
+    for year in range(min_year, max_year+1) :
+        files = sorted(data_folder.glob(f'fha_*snapshot*{year}*.parquet'))
+        for file in files :
+            df_a = pl.scan_parquet(str(file))
+            df.append(df_a)
+    df = pl.concat(df, how='diagonal_relaxed')
+
+    # Sink
+    df.sink_parquet(
+        pl.PartitionByKey(
+            save_folder / "{key[0].name}={key[0].value}/{key[1].name}={key[1].value}/000",
+            by=[pl.col('Year'), pl.col('Month')],
+            include_key=True,
+        ),
+        mkdir=True,
+    )
+
 #%% Main Routine
 if __name__ == '__main__' :
 
@@ -724,7 +749,12 @@ if __name__ == '__main__' :
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202506')
+    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202506')
+
+    # Save Clean Snapshots to Database
+    DATA_FOLDER = CLEAN_DIR / 'single_family'
+    SAVE_FOLDER = DATA_DIR / 'database/single_family'
+    save_clean_snapshots_to_db(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025)
 
     ## HECM
     # Convert HECM Snapshots
@@ -736,4 +766,9 @@ if __name__ == '__main__' :
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'hecm'
     SAVE_FOLDER = DATA_DIR
-    combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2025, file_suffix='_201201-202506')
+    # combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2025, file_suffix='_201201-202506')
+
+    # Save Clean Snapshots to Database
+    DATA_FOLDER = CLEAN_DIR / 'hecm'
+    SAVE_FOLDER = DATA_DIR / 'database/hecm'
+    save_clean_snapshots_to_db(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025)
