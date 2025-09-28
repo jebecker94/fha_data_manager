@@ -155,14 +155,14 @@ def add_county_fips(df: pl.LazyFrame, state_col: str = "Property State", county_
     print("Getting unique county/state pairs...")
     unique_counties = df.select([state_col, county_col]).unique()
     unique_counties = standardize_county_names(unique_counties, state_col=state_col, county_col=county_col)
-    
+
     # Create list to store county mappings
     county_map = []
-    
+
     # Initialize AddFIPS
     print("Initializing AddFIPS...")
     af = addfips.AddFIPS()
-    
+
     # Generate FIPS codes for each unique county
     print("Generating FIPS codes for unique counties...")
     for row in unique_counties.collect().iter_rows():
@@ -289,7 +289,7 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
     }
     df.columns = [x.replace('_',' ').strip() for x in df.columns]
     df = df.rename(columns = rename_dict, errors = 'ignore')
-    
+
     # Drop Unnamed Columns
     unnamed_columns = [x for x in df.columns if 'Unnamed' in x]
     df = df.drop(columns = unnamed_columns)
@@ -316,13 +316,13 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
     # Replace Bad Loan Purposes for 2016
     df.loc[df['Loan Purpose'].isin(['Fixed Rate', 'Adjustable Rate']), 'Loan Purpose'] = 'Purchase'
     df.loc[df['Loan Purpose'].isin(['Rehabilitation', 'Single Family']), 'Loan Purpose'] = 'Purchase'
-    
+
     # Standardize Down Payment Types
     df.loc[df['Down Payment Source'] == 'NonProfit', 'Down Payment Source'] = 'Non Profit'
-    
+
     # Replace Loan Purpose Types
     df['Loan Purpose'] = [x.replace('-', '_') for x in df['Loan Purpose']]
-        
+
     # Fix County Names and Sponsor Names
     df.loc[df['Property County'] == '#NULL!', 'Property County'] = None
     df.loc[df['Sponsor Name'] == 'Not Available', 'Sponsor Name'] = None
@@ -691,7 +691,7 @@ if __name__ == '__main__' :
     # Combine All Months
     DATA_FOLDER = CLEAN_DIR / 'single_family'
     SAVE_FOLDER = DATA_DIR
-    combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
+    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202502')
 
     ## HECM
     # Convert HECM Snapshots

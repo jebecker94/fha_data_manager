@@ -27,7 +27,7 @@ class FHADictionary():
 
         def __init__(self, ):            
 
-            # Set Data Types )Dictionary)
+            # Set Data Types (Dictionary)
             data_types = {
                 'Property State': 'str',
                 'Property City': 'str',
