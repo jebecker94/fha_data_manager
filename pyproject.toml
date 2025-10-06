@@ -1,7 +1,7 @@
 [project]
 name = "fha-data-manager"
 version = "0.1.0"
-description = "Add your description here"
+description = "A project for downloading, cleaning, and storing publicly available FHA datasets."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
