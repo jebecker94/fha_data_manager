@@ -7,37 +7,19 @@ glance log of which source files are available and how large they are.
 
 from __future__ import annotations
 
-import argparse
 import csv
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List
+import config
 
-try:
-    import config as project_config
-except ModuleNotFoundError as exc:
-    if exc.name != "decouple":
-        raise
-    project_config = None
-
-
-def _coerce_path(path_value: Path | str) -> Path:
-    return Path(path_value).expanduser().resolve()
-
-
-if project_config is not None:
-    PROJECT_DIR = _coerce_path(project_config.PROJECT_DIR)
-    DATA_DIR = _coerce_path(project_config.DATA_DIR)
-    RAW_DIR = _coerce_path(project_config.RAW_DIR)
-    CLEAN_DIR = _coerce_path(project_config.CLEAN_DIR)
-else:
-    PROJECT_DIR = Path.cwd().resolve()
-    DATA_DIR = (PROJECT_DIR / "data").resolve()
-    RAW_DIR = (DATA_DIR / "raw").resolve()
-    CLEAN_DIR = (DATA_DIR / "clean").resolve()
-DEFAULT_OUTPUT = DATA_DIR / "data_inventory.csv"
+# Set folder paths
+PROJECT_DIR = Path(config.PROJECT_DIR)
+DATA_DIR = Path(config.DATA_DIR)
+RAW_DIR = Path(config.RAW_DIR)
+CLEAN_DIR = Path(config.CLEAN_DIR)
 
 
 @dataclass
@@ -196,43 +178,13 @@ def write_inventory(records: list[FileRecord], output_path: Path) -> Path:
     return output_path
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=DEFAULT_OUTPUT,
-        help="Destination CSV file. Defaults to data/data_inventory.csv.",
-    )
-    parser.add_argument(
-        "--include-outside",
-        action="store_true",
-        help=(
-            "Include files that fall outside the configured data directory. "
-            "By default only files within DATA_DIR are inventoried."
-        ),
-    )
-    return parser.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> Path:
-    args = parse_args(argv)
-
+def main() -> Path:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    if args.include_outside:
-        logging.info("Scanning entire project directory for data files.")
-        files = discover_data_files(PROJECT_DIR)
-    else:
-        files = discover_data_files(DATA_DIR)
-
+    files = discover_data_files(DATA_DIR)
     records = build_records(files)
 
-    output_path = args.output
-    if not output_path.is_absolute():
-        output_path = (PROJECT_DIR / output_path).resolve()
-
-    return write_inventory(records, output_path)
+    return write_inventory(records, DATA_DIR / "data_inventory.csv")
 
 
 if __name__ == "__main__":

@@ -16,8 +16,6 @@ import config
 import numpy as np
 import pandas as pd
 import polars as pl
-import pyarrow as pa
-import pyarrow.parquet as pq
 from mtgdicts import FHADictionary
 
 
@@ -417,96 +415,6 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
                     # Display Progress
                     logger.info('File %s already exists!', output_file)
 
-# Combine FHA Single-Family Snapshots
-def combine_fha_sf_snapshots(
-    data_folder: Path,
-    save_folder: Path,
-    min_year: int = 2010,
-    max_year: int = 2024,
-    file_suffix: str | None = None,
-) -> None:
-    """
-    Combines cleaned monthly SF snapshots into a single file containing all
-    years/months.
-
-    Parameters
-    ----------
-    data_folder : pathlib.Path
-        Directory where monthly SF parquet snapshots are located.
-    save_folder : pathlib.Path
-        Directory where the combined parquet snapshot will be saved.
-    min_year : integer, optional
-        The first year of data to include in combined snapshots.
-        The default is 2010.
-    max_year : integer, optional
-        The last year of data to include in combined snapshots.
-        The default is 2024.
-    file_suffix : str, optional
-        Custom suffix for the output filename. Defaults to a range based on
-        ``min_year`` and ``max_year`` when not provided.
-
-    Returns
-    -------
-    None.
-
-    """
-
-    # Get Yearly Files and Combine
-    df = []
-    for year in range(min_year, max_year+1) :
-        files = sorted(data_folder.glob(f'fha_sf_snapshot*{year}*.parquet'))
-        for file in files :
-            df_a = pl.scan_parquet(file)
-            length1 = df_a.select(pl.len()).collect().to_series()[0]
-            df_a = df_a.unique()
-            length2 = df_a.select(pl.len()).collect().to_series()[0]
-
-            if length1 != length2 :
-                print('File', file, 'has', length1, 'rows before dropping duplicates and', length2, 'rows after dropping duplicates')
-
-            df.append(df_a)
-    df = pl.concat(df, how='diagonal_relaxed')
-
-    # Replace null values with empty strings
-    for column in ["Originating Mortgagee", "Sponsor Name"]:
-        df = df.with_columns(
-            pl.when(pl.col(column).is_null())
-            .then(pl.lit(""))
-            .otherwise(pl.col(column))
-            .alias(column)
-        )
-        df = df.with_columns(
-            pl.when(pl.col(column).is_in(["nan", "None"]))
-            .then(pl.lit(""))
-            .otherwise(pl.col("Sponsor Name"))
-            .alias("Sponsor Name")
-        )
-
-    # Iterate over rows and add FIPS codes to unique_counties
-    df = add_county_fips(df)
-
-    # Create Datetime Column
-    df = df.with_columns(
-        pl.concat_str([pl.col('Year').cast(pl.Utf8).str.zfill(4), pl.col('Month').cast(pl.Utf8).str.zfill(2)], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
-    )
-
-    # Replace Sponsor Name with '' for August 2014
-    df = df.with_columns(
-        pl.when(pl.col('Date') == datetime.datetime(2014,8,1))
-        .then(pl.lit(''))
-        .otherwise(pl.col('Sponsor Name'))
-        .alias('Sponsor Name')
-    )
-
-    # Drop Duplicates: Unclear why there are duplicates in the combined file, but there are.
-    df = df.unique()
-
-    # Save Combine File
-    if file_suffix is None :
-        file_suffix = f'_{min_year}-{max_year}'
-    save_file = save_folder / f'fha_combined_sf_originations{file_suffix}.parquet'
-    df.sink_parquet(str(save_file))
-
 #%% HECM
 # Clean Sheets
 def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
@@ -648,59 +556,16 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                     # Display Progress
                     logger.info('File %s already exists!', output_file)
 
-# Combine FHA HECM Snapshots
-def combine_fha_hecm_snapshots(
+# Save Clean Snapshots to Database
+def save_clean_snapshots_to_db(
     data_folder: Path,
     save_folder: Path,
-    min_year: int = 2012,
-    max_year: int = 2024,
-    file_suffix: str | None = None,
+    min_year: int = 2010,
+    max_year: int = 2025,
+    file_type: str = 'single_family',
+    add_fips: bool = True,
+    add_date: bool = True,
 ) -> None:
-    """
-    Combines cleaned monthly HECM snapshots into a single file containing all
-    years/months.
-    Note: Currently, only combines years >2011. Early years have formatting
-    issues that make combination difficult.
-
-    Parameters
-    ----------
-    data_folder : pathlib.Path
-        Directory containing monthly HECM parquet snapshots.
-    save_folder : pathlib.Path
-        Directory where the combined HECM snapshot will be written.
-    min_year : integer, optional
-        The first year of data to include in combined snapshots.
-        The default is 2012.
-    max_year : integer, optional
-        The last year of data to include in combined snapshots.
-        The default is 2024.
-    file_suffix : str, optional
-        The suffix to use for the combined file name. When ``None`` a suffix
-        reflecting the year range is generated automatically.
-
-    Returns
-    -------
-    None.
-
-    """
-
-    # Get Files and Combine
-    df = []
-    for year in range(min_year, max_year+1) :
-        files = sorted(data_folder.glob(f'fha_hecm*snapshot*{year}*.parquet'))
-        for file in files :
-            df_a = pl.scan_parquet(str(file))
-            df.append(df_a)
-    df = pl.concat(df, how='diagonal_relaxed')
-
-    # Save Combined File
-    if file_suffix is None :
-        file_suffix = f'_{min_year}-{max_year}'
-    save_file = save_folder / f'fha_combined_hecm_originations{file_suffix}.parquet'
-    df.sink_parquet(str(save_file))
-
-# Save Clean Snapshots to Database
-def save_clean_snapshots_to_db(data_folder: Path, save_folder: Path, min_year: int = 2010, max_year: int = 2025) -> None:
     """
     Saves cleaned snapshots to a database.
     """
@@ -714,10 +579,54 @@ def save_clean_snapshots_to_db(data_folder: Path, save_folder: Path, min_year: i
             df.append(df_a)
     df = pl.concat(df, how='diagonal_relaxed')
 
+    
+    # Replace null values with empty strings
+    for column in ["Originating Mortgagee", "Sponsor Name"]:
+        df = df.with_columns(
+            pl.when(pl.col(column).is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col(column))
+            .alias(column)
+        )
+        df = df.with_columns(
+            pl.when(pl.col(column).is_in(["nan", "None"]))
+            .then(pl.lit(""))
+            .otherwise(pl.col(column))
+            .alias(column)
+        )
+
+    # Iterate over rows and add FIPS codes to unique_counties
+    if add_fips:
+        df = add_county_fips(df)
+
+    # Create Datetime Column
+    if add_date:
+        df = df.with_columns(
+            pl.concat_str([
+                pl.col('Year').cast(pl.Utf8).str.zfill(4),
+                pl.col('Month').cast(pl.Utf8).str.zfill(2),
+            ], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
+        )
+
+    # Replace Sponsor Name with '' for August 2014
+    if file_type == 'single_family':
+        df = df.with_columns(
+            pl.when(pl.col('Date') == datetime.datetime(2014,8,1))
+            .then(pl.lit(''))
+            .otherwise(pl.col('Sponsor Name'))
+            .alias('Sponsor Name')
+        )
+
+    # Drop Duplicates: Unclear why there are duplicates in the combined file, but there are.
+    df = df.unique()
+
+    # Drop Null Rows in Year and Month
+    df = df.drop_nulls(subset=['Year', 'Month'])
+
     # Sink
     df.sink_parquet(
         pl.PartitionByKey(
-            save_folder / "{key[0].name}={key[0].value}/{key[1].name}={key[1].value}/000",
+            save_folder / "{key[0].name}={key[0].value}/{key[1].name}={key[1].value}/000.parquet",
             by=[pl.col('Year'), pl.col('Month')],
             include_key=True,
         ),
@@ -735,40 +644,44 @@ if __name__ == '__main__' :
     CLEAN_DIR = Path(config.CLEAN_DIR)
 
     # Create Data Folders
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    CLEAN_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(exist_ok=True)
+    RAW_DIR.mkdir(exist_ok=True)
+    CLEAN_DIR.mkdir(exist_ok=True)
 
     ## Single Family
     # Convert Snapshots
-    DATA_FOLDER = RAW_DIR / 'single_family'
-    SAVE_FOLDER = CLEAN_DIR / 'single_family'
-    SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
-    convert_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
-
-    # Combine All Months
-    DATA_FOLDER = CLEAN_DIR / 'single_family'
-    SAVE_FOLDER = DATA_DIR
-    # combine_fha_sf_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025, file_suffix='_201006-202506')
+    convert_fha_sf_snapshots(
+        RAW_DIR / 'single_family', 
+        CLEAN_DIR / 'single_family', 
+        overwrite=False,
+    )
 
     # Save Clean Snapshots to Database
-    DATA_FOLDER = CLEAN_DIR / 'single_family'
-    SAVE_FOLDER = DATA_DIR / 'database/single_family'
-    save_clean_snapshots_to_db(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025)
+    save_clean_snapshots_to_db(
+        CLEAN_DIR / 'single_family',
+        DATA_DIR / 'database/single_family',
+        min_year=2010,
+        max_year=2025,
+        file_type='single_family',
+        add_fips=True,
+        add_date=True,
+    )
 
     ## HECM
     # Convert HECM Snapshots
-    DATA_FOLDER = RAW_DIR / 'hecm'
-    SAVE_FOLDER = CLEAN_DIR / 'hecm'
-    SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
-    convert_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, overwrite=False)
-
-    # Combine All Months
-    DATA_FOLDER = CLEAN_DIR / 'hecm'
-    SAVE_FOLDER = DATA_DIR
-    # combine_fha_hecm_snapshots(DATA_FOLDER, SAVE_FOLDER, min_year=2012, max_year=2025, file_suffix='_201201-202506')
+    convert_fha_hecm_snapshots(
+        RAW_DIR / 'hecm',
+        CLEAN_DIR / 'hecm',
+        overwrite=False,
+    )
 
     # Save Clean Snapshots to Database
-    DATA_FOLDER = CLEAN_DIR / 'hecm'
-    SAVE_FOLDER = DATA_DIR / 'database/hecm'
-    save_clean_snapshots_to_db(DATA_FOLDER, SAVE_FOLDER, min_year=2010, max_year=2025)
+    save_clean_snapshots_to_db(
+        CLEAN_DIR / 'hecm', 
+        DATA_DIR / 'database/hecm', 
+        min_year=2010, 
+        max_year=2025,
+        file_type='hecm',
+        add_fips=True,
+        add_date=True,
+    )

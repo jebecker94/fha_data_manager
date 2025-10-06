@@ -1,35 +1,9 @@
-# Dependencies
-node_modules/
-vendor/
-
-# Build outputs
-dist/
-build/
-out/
-
-# IDEs and editors
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-
 # Logs
 logs/
 *.log
-npm-debug.log*
 
 # Environment variables
 .env
-.env.local
-.env.*.local
-
-# Testing
-coverage/
-
-# System Files
-.DS_Store
-Thumbs.db
 
 # Compiled files
 *.com
@@ -62,5 +36,9 @@ data/raw
 data/clean/archived/hecm/
 data/clean/archived/single_family/
 output/*
+data/database
 
 __pycache__/*
+
+# Deprecated Files
+deprecated_functions.py
