@@ -1,8 +1,8 @@
-FHA Data Manager – Agent Guide
+# FHA Data Manager – Agent Guide
 
-Schemas
+## Schemas
 
-Single Family (cleaned monthly snapshots)
+### Single Family (cleaned monthly snapshots)
 - Property State: string
 - Property City: string
 - Property County: string
@@ -22,7 +22,7 @@ Single Family (cleaned monthly snapshots)
 - Month: int16
 - FHA_Index: string
 
-HECM (cleaned monthly snapshots)
+### HECM (cleaned monthly snapshots)
 - Property State: string
 - Property City: string
 - Property County: string
@@ -45,16 +45,16 @@ HECM (cleaned monthly snapshots)
 - Previous Servicer ID: int64
 - FHA_Index: string
 
-Where data live
+## Where data live
 - Raw downloads: data/raw/single_family, data/raw/hecm
 - Cleaned monthly parquet: data/clean/single_family, data/clean/hecm
 - Hive-structured database: data/database/{single_family|hecm}/Year=YYYY/Month=M/*.parquet
 
-Key scripts
+## Key scripts
 - download_fha_data.py: Downloads snapshots and standardizes filenames (fha_sf_snapshot_YYYYMM01.*, fha_hecm_snapshot_YYYYMM01.*)
 - import_fha_data.py: Cleans monthly files to parquet and saves to hive-structured database
 
-Typical workflow
+## Typical workflow
 1) Download snapshots
    python download_fha_data.py
 
@@ -62,7 +62,7 @@ Typical workflow
    python import_fha_data.py
    # Produces monthly parquet in data/clean/{single_family|hecm} and hive-structured database in data/database/
 
-Interacting with data (examples)
+## Interacting with data (examples)
 - Read Single Family from hive-structured database
    import polars as pl
    df = pl.scan_parquet('data/database/single_family')
@@ -75,7 +75,8 @@ Interacting with data (examples)
    from pyarrow import dataset as ds
    tbl = ds.dataset('data/database/single_family', format='parquet')
 
-Notes
+## Notes
 - Cleaners enforce schema with the dictionaries in mtgdicts.py.
 - Required columns for downstream tools include Year and Month.
 - FHA_Index is unique within each monthly file and built from YYYYMM01_row.
+

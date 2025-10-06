@@ -42,3 +42,6 @@ __pycache__/*
 
 # Deprecated Files
 deprecated_functions.py
+
+# Cursor Files
+.cursor/
