@@ -48,38 +48,30 @@ HECM (cleaned monthly snapshots)
 Where data live
 - Raw downloads: data/raw/single_family, data/raw/hecm
 - Cleaned monthly parquet: data/clean/single_family, data/clean/hecm
-- Combined outputs: data/fha_combined_sf_originations_*.parquet, data/fha_combined_hecm_originations_*.parquet
-- Optional partitioned “database”: <DATA_DIR>/database/{single_family|hecm}/snapshot_month=YYYY-MM/*.parquet
+- Hive-structured database: data/database/{single_family|hecm}/Year=YYYY/Month=M/*.parquet
 
 Key scripts
 - download_fha_data.py: Downloads snapshots and standardizes filenames (fha_sf_snapshot_YYYYMM01.*, fha_hecm_snapshot_YYYYMM01.*)
-- import_fha_data.py: Cleans monthly files to parquet and combines by year range
-- save_clean_snapshots_to_db.py: Builds a partitioned parquet dataset for fast querying
+- import_fha_data.py: Cleans monthly files to parquet and saves to hive-structured database
 
 Typical workflow
 1) Download snapshots
    python download_fha_data.py
 
-2) Clean monthly files and write combined files
+2) Clean monthly files and save to hive-structured database
    python import_fha_data.py
-   # Produces monthly parquet in data/clean/{single_family|hecm} and combined files in data/
-
-3) Build partitioned dataset (optional, aids querying)
-   python save_clean_snapshots_to_db.py --dataset all --overwrite
-   # Destination defaults to <DATA_DIR>/database. Use --output-dir to override.
+   # Produces monthly parquet in data/clean/{single_family|hecm} and hive-structured database in data/database/
 
 Interacting with data (examples)
-- Read combined Single Family in Polars
+- Read Single Family from hive-structured database
    import polars as pl
-   files = pl.read_csv('data/data_inventory.csv')  # optional index
-   df = pl.scan_parquet('data/fha_combined_sf_originations_*.parquet')
+   df = pl.scan_parquet('data/database/single_family')
 
-- Read monthly cleaned HECM snapshots
+- Read HECM from hive-structured database
    import polars as pl
-   lf = pl.scan_parquet('data/clean/hecm/*.parquet')
+   df = pl.scan_parquet('data/database/hecm')
 
-- Query partitioned dataset with PyArrow/DuckDB
-   # After running save_clean_snapshots_to_db.py
+- Query with PyArrow
    from pyarrow import dataset as ds
    tbl = ds.dataset('data/database/single_family', format='parquet')
 

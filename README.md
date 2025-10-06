@@ -12,11 +12,11 @@ Cleans individual single-family and HECM snapshots from the FHA website, and cre
 - Convert the excel (or zipped excel) files into parquets
 - Add a new variable called "FHA_Index" to each observation prior to saving. The index variable is a combination of the year and month, then the row number of the observation in the original data file, left-padded with zeroes to be seven digits long.
 - Note: The row number increments sequentially across all data sheets in the file. Usually the purchase mortgages come first and then refinances, but this may change over time as there are very few quality checks in place for the release of this data, it seems.
-3. Combine the single family and HECM data files
-- Implements a handful of standardization checks alongside the combination process. These checks are described below.
+3. Combine and save the single family and HECM data files to hive-structured database
+- Implements a handful of standardization checks and saves to a partitioned parquet structure. These checks are described below.
 
 ## Data Standardization
-For the combined files, we perform the following data standardization steps:
+When processing the data, we perform the following data standardization steps:
 - Create datetime variables for each month
 - Standardize county names where possible and use the AddFIPS package to translate them into a FIPS code.
     - The FIPS code is constructed by using the state name and the county name. In a number of cases the county names are spelled incorrectly in the FHA files. In these cases, I implement a few manual changes where I can reasonably infer the correct county name from the mistaken spelling. In a small number of cases, the county name is a well-known county name from a different state. For these cases I use the FIPS code for the county name in the inferred state.

@@ -1,5 +1,4 @@
 # Import Packages
-import glob
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -7,7 +6,7 @@ from typing import Dict, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
+import pyarrow.dataset as ds
 import seaborn as sns
 
 
@@ -15,16 +14,18 @@ logger = logging.getLogger(__name__)
 
 def load_combined_data(data_path: Path) -> pd.DataFrame:
     """
-    Load the combined FHA single-family data.
+    Load the FHA single-family data from hive structure.
     
     Args:
-        data_path: Path to the combined data parquet file
+        data_path: Path to the hive-structured parquet directory
         
     Returns:
         DataFrame containing the combined data
     """
     logger.info("Loading data from %s...", data_path)
-    df = pq.read_table(data_path).to_pandas()
+    # Load from hive structure using pyarrow dataset
+    dataset = ds.dataset(data_path, format='parquet')
+    df = dataset.to_table().to_pandas()
     logger.info("Loaded %s records", f"{len(df):,}")
     return df
 
@@ -119,9 +120,8 @@ def print_summary_statistics(stats_dict: Dict[str, pd.DataFrame], section: str):
 
 def main():
 
-    # Load the data
-    files = glob.glob("data/fha_combined_sf_originations*.parquet")
-    data_path = files[0]
+    # Load the data from hive structure
+    data_path = "data/database/single_family"
     df = load_combined_data(data_path)
     
     # Perform analyses

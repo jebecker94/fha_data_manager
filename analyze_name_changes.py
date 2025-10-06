@@ -1,4 +1,3 @@
-import glob
 import logging
 from pathlib import Path
 from typing import Dict, Set, Tuple
@@ -160,12 +159,8 @@ def analyze_name_changes(data_path: str | Path) -> None:
             logger.info("  %s: %s", period, ', '.join(names))
 
 def main():
-    # Find the most recent combined data file
-    files = glob.glob("data/fha_combined_sf_originations*.parquet")
-    if not files:
-        raise FileNotFoundError("No FHA combined data files found")
-    
-    data_path = files[0]
+    # Load data from hive structure
+    data_path = "data/database/single_family"
     analyze_name_changes(data_path)
 
 if __name__ == "__main__":

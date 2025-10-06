@@ -1,5 +1,4 @@
 # Import Packages
-import glob
 import logging
 
 import addfips
@@ -15,9 +14,8 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
 
-    # Load Data
-    files = glob.glob("data/fha_combined_sf_originations*.parquet")
-    df = pl.scan_parquet(files[0])
+    # Load Data from Hive Structure
+    df = pl.scan_parquet("data/database/single_family")
 
     # Tabulate Categorical Columns
     for column in ["Loan Purpose", "Property Type", "Down Payment Source", "Product Type", "Year", "Month",'Date']:
