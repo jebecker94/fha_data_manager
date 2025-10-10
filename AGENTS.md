@@ -80,3 +80,7 @@
 - Required columns for downstream tools include Year and Month.
 - FHA_Index is unique within each monthly file and built from YYYYMM01_row.
 
+
+## Suggestions Tracking Instructions
+- When the user explicitly requests work that corresponds to an item in `suggestions.md`, update that item's checkbox from `- [ ]` to `- [x]` as part of fulfilling the request.
+- Do not mark a suggestion as complete unless the user has asked for that specific item.
