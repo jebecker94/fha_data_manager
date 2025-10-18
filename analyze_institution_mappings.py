@@ -1,10 +1,7 @@
-import glob
 import logging
-from datetime import datetime
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
+import polars as pl
 
 
 logger = logging.getLogger(__name__)
@@ -28,156 +25,146 @@ if __name__ == '__main__':
         
         logging.basicConfig(level=logging.INFO)
 
-        log_message("Starting institution mapping analysis...", log_file)
-        
-        # Get all parquet files
-        files = glob.glob('data/clean/single_family/fha_snapshot_*.parquet')
-        log_message(f"Found {len(files)} parquet files to process", log_file)
-        
-        if not files:
-            log_message("No parquet files found! Please check the data directory.", log_file, level=logging.WARNING)
-            raise FileNotFoundError("No parquet files found")
-        
-        # Initialize lists to store mapping data
-        mapping_data = []
-        
-        # Process each file
-        for file in sorted(files):
-            date_str = file.split('_')[-1].replace('.parquet', '')
-            date = datetime.strptime(date_str, '%Y%m%d')
-            log_message(f"Processing {date_str}...", log_file)
-            
-            try:
-                df = pd.read_parquet(file)
+        log_message("Starting institution mapping analysis (Polars version)...", log_file)
+
+        # Load Data
+        data_folder = 'data/database/single_family'
+        df = pl.scan_parquet(data_folder)
                 
-                # Process originating mortgagees
-                orig_pairs = df[['Originating Mortgagee Number', 'Originating Mortgagee']].drop_duplicates()
-                for _, row in orig_pairs.iterrows():
-                    if pd.notna(row['Originating Mortgagee Number']) and pd.notna(row['Originating Mortgagee']):
-                        mapping_data.append({
-                            'institution_number': str(row['Originating Mortgagee Number']).strip(),
-                            'institution_name': str(row['Originating Mortgagee']).strip(),
-                            'type': 'Originator',
-                            'date': date
-                        })
-                
-                # Process sponsors
-                sponsor_pairs = df[['Sponsor Number', 'Sponsor Name']].drop_duplicates()
-                for _, row in sponsor_pairs.iterrows():
-                    if pd.notna(row['Sponsor Number']) and pd.notna(row['Sponsor Name']):
-                        mapping_data.append({
-                            'institution_number': str(row['Sponsor Number']).strip(),
-                            'institution_name': str(row['Sponsor Name']).strip(),
-                            'type': 'Sponsor',
-                            'date': date
-                        })
-            except Exception as e:
-                log_message(f"Error processing {file}: {str(e)}", log_file, level=logging.ERROR)
-                continue
+        # Process originating mortgagees
+        orig_pairs = (
+            df.select(['Originating Mortgagee Number', 'Originating Mortgagee','Date'])
+            .unique()
+            .filter(
+                pl.col('Originating Mortgagee Number').is_not_null() &
+                pl.col('Originating Mortgagee').is_not_null()
+            )
+            .with_columns([
+                pl.col('Originating Mortgagee Number').cast(pl.Utf8).str.strip_chars().alias('institution_number'),
+                pl.col('Originating Mortgagee').cast(pl.Utf8).str.strip_chars().alias('institution_name'),
+                pl.lit('Originator').alias('type'),
+            ])
+            .select(['institution_number', 'institution_name', 'type', 'Date'])
+        )
         
-        if not mapping_data:
-            log_message("No mapping data collected! Please check the file contents.", log_file, level=logging.WARNING)
-            raise ValueError("No mapping data collected")
-            
-        log_message(f"\nCreating mapping DataFrame from {len(mapping_data)} records...", log_file)
-        mapping_df = pd.DataFrame(mapping_data)
-        
+        # Process sponsors
+        sponsor_pairs = (
+            df.select(['Sponsor Number', 'Sponsor Name','Date'])
+            .unique()
+            .filter(
+                pl.col('Sponsor Number').is_not_null() &
+                pl.col('Sponsor Name').is_not_null()
+            )
+            .with_columns([
+                pl.col('Sponsor Number').cast(pl.Utf8).str.strip_chars().alias('institution_number'),
+                pl.col('Sponsor Name').cast(pl.Utf8).str.strip_chars().alias('institution_name'),
+                pl.lit('Sponsor').alias('type'),
+            ])
+            .select(['institution_number', 'institution_name', 'type', 'Date'])
+        )
+
+        # Combine originators and sponsors
+        institution_pairs = pl.concat([orig_pairs, sponsor_pairs]).collect()
+
+        #  Drop missing institution numbers or names
+        institution_pairs = institution_pairs.filter(
+            pl.col('institution_number') != '',
+            pl.col('institution_name') != '',
+        )
+        log_message(f"Total records: {len(institution_pairs)}", log_file)
+
         # Create summary of mappings
         log_message("\nGenerating institution mapping summary...", log_file)
-        summary = []
-        for num in mapping_df['institution_number'].unique():
-            num_data = mapping_df[mapping_df['institution_number'] == num]
-            for name in num_data['institution_name'].unique():
-                name_data = num_data[num_data['institution_name'] == name]
-                for type_ in name_data['type'].unique():
-                    type_data = name_data[name_data['type'] == type_]
-                    summary.append({
-                        'institution_number': num,
-                        'institution_name': name,
-                        'type': type_,
-                        'first_date': type_data['date'].min(),
-                        'last_date': type_data['date'].max(),
-                        'num_months': len(type_data['date'].unique())
-                    })
-        
-        summary_df = pd.DataFrame(summary)
+        summary_df = (
+            institution_pairs
+            .group_by(['institution_number', 'institution_name', 'type'])
+            .agg([
+                pl.col('Date').min().alias('first_date'),
+                pl.col('Date').max().alias('last_date'),
+                pl.col('Date').n_unique().alias('num_months')
+            ])
+            .sort(['institution_number', 'type', 'first_date'])
+        )
         
         # Analyze potential mapping errors
         log_message("\nAnalyzing potential mapping errors...", log_file)
         errors = []
         
-        # Group by institution number and date
-        for num in mapping_df['institution_number'].unique():
-            num_data = mapping_df[mapping_df['institution_number'] == num].sort_values('date')
+        # Find months where the same number maps to multiple names
+        monthly_mappings = (
+            institution_pairs
+            .with_columns([
+                pl.col('Date').dt.year().alias('year'),
+                pl.col('Date').dt.month().alias('month')
+            ])
+            .group_by(['institution_number', 'year', 'month'])
+            .agg(pl.col('institution_name').unique().alias('names'))
+            .with_columns(pl.col('names').list.len().alias('name_count'))
+            .filter(pl.col('name_count') > 1)
+        )
+        
+        for row in monthly_mappings.iter_rows(named=True):
+            errors.append({
+                'institution_number': row['institution_number'],
+                'date': f"{row['year']}-{row['month']:02d}",
+                'names': row['names'],
+                'issue': 'Multiple names for same number in one month'
+            })
+        
+        # Look for temporary name changes (oscillations)
+        for inst_num in institution_pairs['institution_number'].unique():
+            num_data = (
+                institution_pairs
+                .filter(pl.col('institution_number') == inst_num)
+                .sort('Date')
+            )
             
-            # Look for months where the same number maps to multiple names
-            monthly_groups = num_data.groupby([num_data['date'].dt.year, num_data['date'].dt.month])
+            # Convert to list for easier iteration
+            records = num_data.to_dicts()
             
-            for (year, month), group in monthly_groups:
-                unique_names = group['institution_name'].unique()
-                if len(unique_names) > 1:
-                    errors.append({
-                        'institution_number': num,
-                        'date': f"{year}-{month:02d}",
-                        'names': list(unique_names),
-                        'issue': 'Multiple names for same number in one month'
-                    })
-            
-            # Look for sudden changes in mapping
-            prev_name = None
-            prev_date = None
-            for _, row in num_data.iterrows():
-                if prev_name is not None and row['institution_name'] != prev_name:
-                    # Check if this is a temporary change
-                    future_data = num_data[num_data['date'] > row['date']]
-                    if not future_data.empty and any(future_data['institution_name'] == prev_name):
+            for i, row in enumerate(records):
+                if i == 0:
+                    continue
+                    
+                prev_name = records[i-1]['institution_name']
+                curr_name = row['institution_name']
+                curr_date = row['Date']
+                
+                if curr_name != prev_name:
+                    # Check if previous name appears again in future
+                    future_names = [r['institution_name'] for r in records[i+1:]]
+                    if prev_name in future_names:
                         errors.append({
-                            'institution_number': num,
-                            'date': row['date'].strftime('%Y-%m'),
+                            'institution_number': inst_num,
+                            'date': curr_date.strftime('%Y-%m'),
                             'old_name': prev_name,
-                            'new_name': row['institution_name'],
+                            'new_name': curr_name,
                             'issue': 'Temporary name change'
                         })
-                prev_name = row['institution_name']
-                prev_date = row['date']
-        
-        error_df = pd.DataFrame(errors)
+
+        error_df = pl.DataFrame(errors) if errors else pl.DataFrame({
+            'institution_number': [],
+            'Date': [],
+            'names': [],
+            'issue': []
+        })
+
+        # Cast names to string
+        # This is necessary because the names are a list of strings
+        error_df = error_df.with_columns(
+            pl.col('names').map_elements(lambda x: ",".join(x) if isinstance(x, (list, pl.Series)) else x),
+        )
 
         # Save results
         log_message("\nSaving results...", log_file)
-        summary_df.to_csv(output_dir / 'institution_crosswalk.csv', index=False)
-        error_df.to_csv(output_dir / 'institution_mapping_errors.csv', index=False)
+        summary_df.write_csv(output_dir / 'institution_crosswalk.csv')
+        error_df.write_csv(output_dir / 'institution_mapping_errors.csv')
 
         # Write summary statistics
         log_message("\nCrosswalk Summary:", log_file)
-        log_message(f"Total unique institution numbers: {len(summary_df['institution_number'].unique())}", log_file)
-        log_message(f"Total unique institution names: {len(summary_df['institution_name'].unique())}", log_file)
+        log_message(f"Total unique institution numbers: {institution_pairs['institution_number'].n_unique()}", log_file)
+        log_message(f"Total unique institution names: {institution_pairs['institution_name'].n_unique()}", log_file)
         log_message(f"Potential Errors Found: {len(error_df)}", log_file)
-        
-        # Analyze specific time periods
-        log_message("\nAnalyzing specific time periods...", log_file)
-        for year in range(2014, 2015):
-            for month in range(1, 13):
-                date = datetime(year, month, 1)
-                period_data = mapping_df[mapping_df['date'] == date]
-                if not period_data.empty:
-                    log_message(f"\n{date.strftime('%B %Y')} Analysis:", log_file)
-                    log_message(f"Number of unique institutions: {len(period_data['institution_number'].unique())}", log_file)
-                    log_message(f"Number of unique names: {len(period_data['institution_name'].unique())}", log_file)
-                    
-                    # Find institutions with multiple names
-                    issues = period_data.groupby('institution_number').agg({
-                        'institution_name': lambda x: list(set(x))
-                    }).reset_index()
-                    issues = issues[issues['institution_name'].map(len) > 1]
-                    
-                    if not issues.empty:
-                        log_message(f"\nInstitutions with multiple names in {date.strftime('%B %Y')}:", log_file)
-                        for _, row in issues.iterrows():
-                            log_message(f"Institution {row['institution_number']}:", log_file)
-                            for name in row['institution_name']:
-                                log_message(f"  - {name}", log_file)
-        
         log_message("\nAnalysis complete. Results saved in output directory.", log_file)
         
     except Exception as e:
@@ -186,3 +173,4 @@ if __name__ == '__main__':
         log_message("\nTraceback:", log_file, level=logging.ERROR)
         log_message(traceback.format_exc(), log_file, level=logging.ERROR)
         raise  # Re-raise the exception for interactive debugging
+
