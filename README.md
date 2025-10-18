@@ -7,7 +7,7 @@ Cleans individual single-family and HECM snapshots from the FHA website, and cre
 # How To Use
 1. Download the FHA Snapshot Data
 - Run the download_fha_data script to automatically download the single family and hecm snapshots from their respective FHA web pages and save them with a standardized naming cconvention
-- Note: In progress
+- The script handles both direct Excel links and zip archives, standardizing filenames as they are saved
 2. Clean the single family and HECM data files
 - Convert the excel (or zipped excel) files into parquets
 - Add a new variable called "FHA_Index" to each observation prior to saving. The index variable is a combination of the year and month, then the row number of the observation in the original data file, left-padded with zeroes to be seven digits long.
@@ -55,6 +55,6 @@ python log_data_inventory.py
 ```
 
 By default the inventory is saved to ``data/data_inventory.csv`` and includes file size
-and timestamp metadata for easy review. Pass the ``--output`` flag to change the
-destination or ``--include-outside`` if you would like to inventory every file within
-the project directory, not just those located under ``data/``.
+and timestamp metadata for easy review. Adjust the destination by configuring the
+``DATA_DIR`` setting via environment variables (see ``config.py``) if you would like the
+inventory saved elsewhere.
