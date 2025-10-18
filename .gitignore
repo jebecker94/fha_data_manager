@@ -5,26 +5,11 @@ logs/
 # Environment variables
 .env
 
-# Compiled files
-*.com
-*.class
-*.dll
-*.exe
-*.o
-*.so
-
 # Package files
-*.7z
-*.dmg
-*.gz
-*.iso
-*.jar
-*.rar
-*.tar
 *.zip
 
 # Virtual Environments
-.venv/*
+.venv/
 
 # Python Version
 .python-version
