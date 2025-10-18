@@ -22,6 +22,7 @@ data/clean/archived/hecm/
 data/clean/archived/single_family/
 output/*
 data/database
+deprecated
 
 __pycache__/*
 
