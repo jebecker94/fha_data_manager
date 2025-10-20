@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Literal, Union
 
 import matplotlib.pyplot as plt
 import polars as pl
@@ -70,6 +70,118 @@ def analyze_lender_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     results['yearly_lenders'] = yearly_lenders
 
     return results
+
+
+Frequency = Literal["annual", "quarterly"]
+
+
+def _normalize_frequency(frequency: str) -> Frequency:
+    """Validate and normalize frequency input."""
+
+    freq = frequency.lower()
+    if freq in {"annual", "yearly", "year"}:
+        return "annual"
+    if freq in {"quarter", "quarterly"}:
+        return "quarterly"
+    msg = "frequency must be 'annual' or 'quarterly'"
+    raise ValueError(msg)
+
+
+def _prepare_period_columns(lf: pl.LazyFrame, frequency: Frequency) -> tuple[pl.LazyFrame, list[str]]:
+    """Add period columns used for aggregations."""
+
+    period_columns = ["Year"]
+    if frequency == "quarterly":
+        lf = lf.with_columns(
+            ((pl.col("Month") - 1) // 3 + 1)
+            .cast(pl.UInt8)
+            .alias("Quarter")
+        )
+        period_columns.append("Quarter")
+    return lf, period_columns
+
+
+def build_lender_panel(
+    df: pl.DataFrame | pl.LazyFrame,
+    frequency: str = "annual",
+    output_path: str | Path | None = None,
+) -> pl.DataFrame:
+    """Create a lender-level panel with annual or quarterly metrics.
+
+    Args:
+        df: FHA single-family dataset as a DataFrame or LazyFrame.
+        frequency: Aggregation frequency (``"annual"`` or ``"quarterly"``).
+        output_path: Optional path where the resulting panel will be written
+            as a Parquet file.
+
+    Returns:
+        A ``pl.DataFrame`` containing lender-level aggregates suitable for
+        econometric analysis.
+    """
+
+    freq = _normalize_frequency(frequency)
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+    lf, period_columns = _prepare_period_columns(lf, freq)
+
+    grouping_columns = period_columns + [
+        "Originating Mortgagee Number",
+        "Originating Mortgagee",
+    ]
+
+    aggregated = (
+        lf.group_by(grouping_columns)
+        .agg(
+            [
+                pl.len().alias("loan_count"),
+                pl.col("Mortgage Amount").sum().alias("total_mortgage_amount"),
+                pl.col("Interest Rate").mean().alias("avg_interest_rate"),
+                pl.col("Loan Purpose")
+                .fill_null("")
+                .str.to_lowercase()
+                .eq("purchase")
+                .sum()
+                .alias("purchase_loan_count"),
+                pl.col("Loan Purpose")
+                .fill_null("")
+                .str.to_lowercase()
+                .eq("refinance")
+                .sum()
+                .alias("refinance_loan_count"),
+            ]
+        )
+        .with_columns(
+            [
+                pl.when(pl.col("loan_count") > 0)
+                .then(pl.col("total_mortgage_amount") / pl.col("loan_count"))
+                .otherwise(None)
+                .alias("avg_mortgage_amount"),
+                pl.when(pl.col("loan_count") > 0)
+                .then(pl.col("purchase_loan_count") / pl.col("loan_count"))
+                .otherwise(None)
+                .alias("purchase_share"),
+                pl.when(pl.col("loan_count") > 0)
+                .then(pl.col("refinance_loan_count") / pl.col("loan_count"))
+                .otherwise(None)
+                .alias("refinance_share"),
+                pl.lit(freq).alias("frequency"),
+            ]
+        )
+        .sort(grouping_columns)
+    )
+
+    result = aggregated.collect()
+
+    if output_path:
+        output_path = Path(output_path)
+        if output_path.suffix:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            result.write_parquet(str(output_path))
+        else:
+            output_path.mkdir(parents=True, exist_ok=True)
+            file_name = f"lender_panel_{freq}.parquet"
+            result.write_parquet(str(output_path / file_name))
+
+    return result
 
 
 def analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
