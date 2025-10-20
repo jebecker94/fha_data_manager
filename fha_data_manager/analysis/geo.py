@@ -1,0 +1,204 @@
+"""Geographic summary helpers for FHA single-family data."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+import polars as pl
+
+Frequency = Literal["annual", "quarterly"]
+
+
+def _normalize_frequency(frequency: str) -> Frequency:
+    """Validate and normalize geographic summary frequency."""
+
+    freq = frequency.lower()
+    if freq in {"annual", "yearly", "year"}:
+        return "annual"
+    if freq in {"quarter", "quarterly"}:
+        return "quarterly"
+    msg = "frequency must be 'annual' or 'quarterly'"
+    raise ValueError(msg)
+
+
+def _prepare_period_columns(lf: pl.LazyFrame, frequency: Frequency) -> tuple[pl.LazyFrame, list[str]]:
+    """Attach the period columns needed for aggregations."""
+
+    period_columns = ["Year"]
+    if frequency == "quarterly":
+        lf = lf.with_columns(
+            ((pl.col("Month") - 1) // 3 + 1)
+            .cast(pl.UInt8)
+            .alias("Quarter")
+        )
+        period_columns.append("Quarter")
+    return lf, period_columns
+
+
+def summarize_county_metrics(
+    df: pl.DataFrame | pl.LazyFrame,
+    frequency: str = "annual",
+    *,
+    fips_col: str = "FIPS",
+    state_col: str = "Property State",
+    county_col: str = "Property County",
+    output_path: str | Path | None = None,
+) -> pl.DataFrame:
+    """Create county-level mortgage summaries.
+
+    Args:
+        df: FHA single-family dataset enriched with county-level FIPS codes.
+        frequency: Aggregation frequency (``"annual"`` or ``"quarterly"``).
+        fips_col: Column containing county-level FIPS codes.
+        state_col: Column containing state names or abbreviations.
+        county_col: Column containing county names.
+        output_path: Optional path where the resulting summary will be written
+            as a Parquet file. If a directory is provided, the file name will
+            be ``county_metrics_<frequency>.parquet``.
+
+    Returns:
+        A ``pl.DataFrame`` with loan counts, mortgage statistics, and interest
+        rate dispersion measures at the county level.
+    """
+
+    freq = _normalize_frequency(frequency)
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+    lf, period_columns = _prepare_period_columns(lf, freq)
+
+    required_columns = {fips_col, state_col, county_col, "Mortgage Amount", "Interest Rate"}
+    missing = required_columns.difference(lf.columns)
+    if missing:
+        msg = f"Missing required columns for county summary: {sorted(missing)}"
+        raise ValueError(msg)
+
+    grouping_columns = period_columns + [state_col, county_col, fips_col]
+
+    summary = (
+        lf.group_by(grouping_columns)
+        .agg(
+            [
+                pl.len().alias("loan_count"),
+                pl.col("Mortgage Amount").median().alias("median_mortgage_amount"),
+                pl.col("Mortgage Amount").mean().alias("avg_mortgage_amount"),
+                pl.col("Mortgage Amount").sum().alias("total_mortgage_amount"),
+                pl.col("Interest Rate").mean().alias("avg_interest_rate"),
+                pl.col("Interest Rate").std().alias("interest_rate_std"),
+                pl.col("Interest Rate").quantile(0.75).alias("interest_rate_q3"),
+                pl.col("Interest Rate").quantile(0.25).alias("interest_rate_q1"),
+            ]
+        )
+        .with_columns(
+            [
+                (pl.col("interest_rate_q3") - pl.col("interest_rate_q1")).alias("interest_rate_iqr"),
+                pl.lit(freq).alias("frequency"),
+            ]
+        )
+        .drop(["interest_rate_q3", "interest_rate_q1"])
+        .sort(grouping_columns)
+    )
+
+    result = summary.collect()
+
+    if output_path:
+        output_path = Path(output_path)
+        if output_path.suffix:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            result.write_parquet(str(output_path))
+        else:
+            output_path.mkdir(parents=True, exist_ok=True)
+            file_name = f"county_metrics_{freq}.parquet"
+            result.write_parquet(str(output_path / file_name))
+
+    return result
+
+
+def summarize_metro_metrics(
+    df: pl.DataFrame | pl.LazyFrame,
+    frequency: str = "annual",
+    *,
+    county_fips_col: str = "FIPS",
+    cbsa_col: str = "CBSA Code",
+    cbsa_name_col: str | None = "CBSA Title",
+    cbsa_crosswalk: pl.DataFrame | pl.LazyFrame | None = None,
+    output_path: str | Path | None = None,
+) -> pl.DataFrame:
+    """Create metro-level mortgage summaries from county-level data.
+
+    Args:
+        df: FHA single-family dataset enriched with county-level FIPS codes.
+        frequency: Aggregation frequency (``"annual"`` or ``"quarterly"``).
+        county_fips_col: Column containing county-level FIPS codes used for
+            joins to CBSA information.
+        cbsa_col: Column containing CBSA or metropolitan area identifiers.
+        cbsa_name_col: Optional column with CBSA titles or names.
+        cbsa_crosswalk: Optional dataset mapping counties to CBSAs. When
+            provided, it must contain ``county_fips_col`` and ``cbsa_col``
+            (plus ``cbsa_name_col`` if provided).
+        output_path: Optional path where the resulting summary will be written
+            as a Parquet file. If a directory is provided, the file name will
+            be ``metro_metrics_<frequency>.parquet``.
+
+    Returns:
+        A ``pl.DataFrame`` with metro-level loan counts and mortgage statistics.
+    """
+
+    freq = _normalize_frequency(frequency)
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+    lf, period_columns = _prepare_period_columns(lf, freq)
+
+    if cbsa_crosswalk is not None:
+        crosswalk_lf = cbsa_crosswalk.lazy() if isinstance(cbsa_crosswalk, pl.DataFrame) else cbsa_crosswalk
+        crosswalk_columns = [county_fips_col, cbsa_col]
+        if cbsa_name_col is not None:
+            crosswalk_columns.append(cbsa_name_col)
+        crosswalk_lf = crosswalk_lf.select(crosswalk_columns).unique()
+        lf = lf.join(crosswalk_lf, on=county_fips_col, how="left")
+
+    required_columns = {county_fips_col, cbsa_col, "Mortgage Amount", "Interest Rate"}
+    missing = required_columns.difference(lf.columns)
+    if missing:
+        msg = f"Missing required columns for metro summary: {sorted(missing)}"
+        raise ValueError(msg)
+
+    grouping_columns = period_columns + [cbsa_col]
+    if cbsa_name_col is not None and cbsa_name_col in lf.columns:
+        grouping_columns.append(cbsa_name_col)
+
+    summary = (
+        lf.group_by(grouping_columns)
+        .agg(
+            [
+                pl.len().alias("loan_count"),
+                pl.col("Mortgage Amount").median().alias("median_mortgage_amount"),
+                pl.col("Mortgage Amount").mean().alias("avg_mortgage_amount"),
+                pl.col("Mortgage Amount").sum().alias("total_mortgage_amount"),
+                pl.col("Interest Rate").mean().alias("avg_interest_rate"),
+                pl.col("Interest Rate").std().alias("interest_rate_std"),
+                pl.col("Interest Rate").quantile(0.75).alias("interest_rate_q3"),
+                pl.col("Interest Rate").quantile(0.25).alias("interest_rate_q1"),
+            ]
+        )
+        .with_columns(
+            [
+                (pl.col("interest_rate_q3") - pl.col("interest_rate_q1")).alias("interest_rate_iqr"),
+                pl.lit(freq).alias("frequency"),
+            ]
+        )
+        .drop(["interest_rate_q3", "interest_rate_q1"])
+        .sort(grouping_columns)
+    )
+
+    result = summary.collect()
+
+    if output_path:
+        output_path = Path(output_path)
+        if output_path.suffix:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            result.write_parquet(str(output_path))
+        else:
+            output_path.mkdir(parents=True, exist_ok=True)
+            file_name = f"metro_metrics_{freq}.parquet"
+            result.write_parquet(str(output_path / file_name))
+
+    return result
