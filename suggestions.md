@@ -1,13 +1,4 @@
-# Suggestions for FHA Data Research
-
-## Research Features (Already Completed)
-- [x] Build a lender-level panel dataset within `fha_data_manager/analysis/` that extends `fha_data_manager.analysis.exploratory.analyze_lender_activity` by aggregating loan counts, total volume, average interest rates, and purchase-versus-refinance shares at annual or quarterly frequency, and export the result for econometric modeling (e.g., market share and Herfindahl analyses).
-- [x] Leverage the `import_fha_data.add_county_fips` enrichment and add geographic summary helpers under `fha_data_manager/analysis/geo.py` to create county- and metro-level tables (loan counts, median mortgage amounts, interest rate dispersion) that researchers can merge with BLS/ACS indicators when studying local housing market dynamics.
-- [x] Combine insights from the sponsor/originator snapshots with `fha_data_manager.analysis.network` utilities to build network analytics (e.g., bipartite graphs, centrality metrics) that illuminate how sponsor relationships influence FHA loan flows.
-
-## Research Features (Pending)
-- [ ] Expand `InstitutionAnalyzer.analyze_name_changes_over_time` in `fha_data_manager/analysis/institutions.py` to emit a structured event log of lender/sponsor renamings and ownership transitions so researchers can run event studies on rebranding or consolidation episodes.
-- [ ] Enhance `create_lender_id_to_name_crosswalk` in `import_fha_data.py` by capturing the first/last observed periods for each ID–name pairing and flagging conflicting names, enabling clean joins to regulatory and financial datasets.
+# Suggestions for FHA Data Manager improvements
 
 ## Code Quality & Maintainability
 - [x] Add comprehensive type hints throughout the codebase, particularly in `download.py`, `import_data.py`, and `mtgdicts.py`, to improve IDE support and catch type-related bugs early.
@@ -19,9 +10,7 @@
 ## Testing & Quality Assurance
 - [ ] Expand test coverage to include `download.py`, `download_cli.py`, `import_data.py`, and `import_cli.py` - currently these core modules lack unit tests.
 - [ ] Add integration tests that run the full download → import → validate → analyze pipeline on a small sample dataset to catch end-to-end issues.
-- [ ] Create performance benchmarks for data processing functions to detect performance regressions when making optimizations.
 - [ ] Add property-based tests (using `hypothesis`) for data cleaning functions to test edge cases automatically.
-- [ ] Set up test fixtures with realistic but small synthetic FHA datasets to enable faster test execution.
 
 ## Documentation
 - [ ] Complete the API reference documentation in `docs/api/README.md` with detailed function signatures, parameters, and return types for all public functions.
@@ -51,23 +40,14 @@
 - [ ] Build a reconciliation tool that compares aggregate statistics between raw and cleaned data to catch processing errors.
 - [ ] Add validation rules specific to temporal consistency (e.g., checking for implausible month-over-month changes in institution activity).
 
-## New Analysis Capabilities
-- [ ] Implement market concentration metrics (Herfindahl-Hirschman Index) at national, state, and metro levels to study lender competition over time.
-- [ ] Add time-series decomposition utilities for analyzing seasonality and trends in FHA lending activity.
-- [ ] Create cohort analysis tools to track lender entry/exit patterns and survival rates over time.
-- [ ] Build spatial analysis capabilities using geographic clustering (e.g., hot spot analysis) to identify regional lending patterns.
-- [ ] Add functions to compute market shares and concentration ratios for different lender types (banks, non-banks, credit unions).
-
 ## User Interface & Accessibility
 - [ ] Create Jupyter notebook templates for common research tasks (lender analysis, geographic analysis, validation reports) in an `notebooks/` directory.
 - [ ] Build a simple web dashboard using `streamlit` or `panel` for interactive data exploration without coding.
-- [ ] Add export utilities for Stata, R, and SAS formats to accommodate researchers using different statistical software.
 - [ ] Create summary statistics exports in publication-ready formats (LaTeX tables, formatted Excel with charts).
 - [ ] Build a CLI tool for quick data queries (e.g., `fha-data query --lender "Wells Fargo" --year 2020 --output results.csv`).
 
 ## Data Management
 - [ ] Implement a data versioning system to track which monthly files have been downloaded and processed, with checksum validation.
-- [ ] Add support for cloud storage backends (S3, Azure Blob, GCS) for the data directory to handle datasets too large for local storage.
 - [ ] Create data archival utilities to compress and archive older monthly files while maintaining quick access to recent data.
 - [ ] Build a data catalog that documents all available variables, their data types, coverage periods, and any known quality issues.
 - [ ] Add support for data sampling utilities that create smaller representative subsets for development and testing.
@@ -80,15 +60,19 @@
 - [ ] Create a "batteries-included" distribution that includes sample data for immediate experimentation.
 
 ## Research Dissemination
-- [ ] Create example notebooks replicating common FHA research findings (e.g., non-bank market share growth) with code and visualizations.
 - [ ] Build a gallery of research outputs (charts, tables, maps) that can be generated using the package.
-- [ ] Write case studies showing how the package was used for specific research questions.
 - [ ] Create citation guidelines and a CITATION.cff file for researchers who use this package in publications.
 - [ ] Build an FAQ addressing common research questions about FHA data interpretation and limitations.
 
-## Data Enrichment [External]
-- [ ] Add support for joining with CBSA-to-county crosswalk files (available from Census/HUD) to enable metro-level analyses in `geo.py`.
-- [ ] Create utilities to merge FHA data with HMDA data for enhanced lender and borrower characteristics.
-- [ ] Build a crosswalk between FHA lender IDs and RSSD IDs (Federal Reserve) to link with regulatory data.
-- [ ] Add support for incorporating HUD area median income (AMI) data for analysis of lending in low/moderate-income areas.
-- [ ] Implement house price index (FHFA HPI) integration for analyzing loan-to-value dynamics over time.
+## New Analysis Capabilities
+- [ ] Implement market concentration metrics (Herfindahl-Hirschman Index) at national, state, and county levels to study lender competition over time.
+- [ ] Add time-series decomposition utilities for analyzing seasonality and trends in FHA lending activity.
+- [ ] Create cohort analysis tools to track lender entry/exit patterns and survival rates over time.
+- [ ] Build spatial analysis capabilities using geographic clustering (e.g., hot spot analysis) to identify regional lending patterns.
+
+## Research Features
+- [x] Build a lender-level panel dataset within `fha_data_manager/analysis/` that extends `fha_data_manager.analysis.exploratory.analyze_lender_activity` by aggregating loan counts, total volume, average interest rates, and purchase-versus-refinance shares at annual or quarterly frequency, and export the result for econometric modeling (e.g., market share and Herfindahl analyses).
+- [x] Leverage the `import_fha_data.add_county_fips` enrichment and add geographic summary helpers under `fha_data_manager/analysis/geo.py` to create county- and metro-level tables (loan counts, median mortgage amounts, interest rate dispersion) that researchers can merge with BLS/ACS indicators when studying local housing market dynamics.
+- [x] Combine insights from the sponsor/originator snapshots with `fha_data_manager.analysis.network` utilities to build network analytics (e.g., bipartite graphs, centrality metrics) that illuminate how sponsor relationships influence FHA loan flows.
+- [ ] Expand `InstitutionAnalyzer.analyze_name_changes_over_time` in `fha_data_manager/analysis/institutions.py` to emit a structured event log of lender/sponsor renamings and ownership transitions so researchers can run event studies on rebranding or consolidation episodes.
+- [ ] Enhance `create_lender_id_to_name_crosswalk` in `import_fha_data.py` by capturing the first/last observed periods for each ID–name pairing and flagging conflicting names, enabling clean joins to regulatory and financial datasets.
