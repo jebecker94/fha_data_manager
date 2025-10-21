@@ -21,9 +21,8 @@ from fha_data_manager.download import (
     process_zip_file,
     standardize_filename,
 )
+from fha_data_manager.utils.logging import configure_logging
 
-# Configure basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Re-export all functions for backwards compatibility
@@ -38,6 +37,7 @@ __all__ = [
 
 # Main Routine
 if __name__ == "__main__":
+    configure_logging()
 
     # Download Single-Samily Data
     target_url = "https://www.hud.gov/stat/sfh/fha-sf-portfolio-snapshot"

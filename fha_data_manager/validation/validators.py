@@ -8,8 +8,11 @@ checking for common data quality issues, schema compliance, and consistency prob
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 import polars as pl
+
+from fha_data_manager.utils.logging import configure_logging
 
 
 logger = logging.getLogger(__name__)
@@ -604,13 +607,18 @@ def main():
         nargs="*",
         help="Specific checks to run (default: all)"
     )
-    
-    args = parser.parse_args()
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help=(
+            "Logging verbosity (default: %(default)s). Accepts standard level "
+            "names or numeric values."
+        ),
     )
+
+    args = parser.parse_args()
+
+    configure_logging(args.log_level)
     
     validator = FHADataValidator(args.data_path)
     validator.load_data()

@@ -1,13 +1,14 @@
 """Interactive data browsing utilities for FHA single-family data."""
 
 import logging
-from typing import Union
 from pathlib import Path
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
+from fha_data_manager.utils.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +134,13 @@ def browse_data(data_path: Union[str, Path] = "data/database/single_family") -> 
     plt.close()
 
 
-def main() -> None:
+def main(log_level: str | int = "INFO") -> None:
     """Run the data browsing utility."""
+
+    configure_logging(log_level)
     browse_data()
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     main()
 

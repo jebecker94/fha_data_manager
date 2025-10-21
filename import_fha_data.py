@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 
 from fha_data_manager.utils.config import CLEAN_DIR, DATA_DIR, RAW_DIR
+from fha_data_manager.utils.logging import configure_logging
 
 from fha_data_manager.import_data import (
     add_county_fips,
@@ -43,8 +44,7 @@ __all__ = [
 
 # Main Routine
 if __name__ == '__main__' :
-
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
 
     # Set Folder Paths (using imported constants)
     data_dir = Path(DATA_DIR)

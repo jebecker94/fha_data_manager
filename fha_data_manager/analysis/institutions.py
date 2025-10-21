@@ -15,6 +15,7 @@ from typing import Dict, List, Set, Tuple
 
 import polars as pl
 
+from fha_data_manager.utils.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -591,13 +592,18 @@ def main():
         action="store_true",
         help="Only build the crosswalk, don't run full analysis"
     )
-    
-    args = parser.parse_args()
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help=(
+            "Logging verbosity (default: %(default)s). Accepts standard level "
+            "names or numeric values."
+        ),
     )
+
+    args = parser.parse_args()
+
+    configure_logging(args.log_level)
     
     analyzer = InstitutionAnalyzer(args.data_path)
     analyzer.load_data()

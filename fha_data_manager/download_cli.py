@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from fha_data_manager.download import download_excel_files_from_url
+from fha_data_manager.utils.logging import configure_logging
 
 SINGLE_FAMILY_SNAPSHOT_URL = "https://www.hud.gov/stat/sfh/fha-sf-portfolio-snapshot"
 HECM_SNAPSHOT_URL = "https://www.hud.gov/hud-partners/hecmsf-snapshot"
@@ -108,6 +109,14 @@ def get_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Download FHA Single Family or HECM snapshot files.",
     )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help=(
+            "Logging verbosity (default: %(default)s). Accepts standard level "
+            "names or numeric values."
+        ),
+    )
     subparsers = parser.add_subparsers(
         dest="snapshot_type",
         required=True,
@@ -144,6 +153,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = get_argument_parser()
     args = parser.parse_args(argv)
+
+    configure_logging(args.log_level)
 
     destination = Path(args.destination).expanduser()
     include_zip = not args.no_zip

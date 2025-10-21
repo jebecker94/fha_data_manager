@@ -13,13 +13,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List
+
 import config
+
+from fha_data_manager.utils.logging import configure_logging
 
 # Set folder paths
 PROJECT_DIR = Path(config.PROJECT_DIR)
 DATA_DIR = Path(config.DATA_DIR)
 RAW_DIR = Path(config.RAW_DIR)
 CLEAN_DIR = Path(config.CLEAN_DIR)
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -58,7 +64,7 @@ def discover_data_files(base_dir: Path) -> List[Path]:
     """Return every file located under ``base_dir``."""
 
     if not base_dir.exists():
-        logging.warning("Data directory %s does not exist.", base_dir)
+        logger.warning("Data directory %s does not exist.", base_dir)
         return []
 
     return sorted(path for path in base_dir.rglob("*") if path.is_file())
@@ -174,12 +180,12 @@ def write_inventory(records: list[FileRecord], output_path: Path) -> Path:
         writer.writeheader()
         writer.writerows(rows)
 
-    logging.info("Wrote %d records to %s", len(rows), output_path)
+    logger.info("Wrote %d records to %s", len(rows), output_path)
     return output_path
 
 
-def main() -> Path:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+def main(log_level: str | int = "INFO") -> Path:
+    configure_logging(log_level)
 
     files = discover_data_files(DATA_DIR)
     records = build_records(files)

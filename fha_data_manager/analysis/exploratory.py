@@ -7,6 +7,7 @@ from typing import Dict, Literal, Union
 import matplotlib.pyplot as plt
 import polars as pl
 
+from fha_data_manager.utils.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -285,10 +286,13 @@ def print_summary_statistics(stats_dict: Dict[str, pl.DataFrame], section: str) 
         logger.info("\n%s", df)
 
 
-def main() -> None:
+def main(log_level: str | int = "INFO") -> None:
     """Run exploratory data analysis and generate visualizations."""
+
+    configure_logging(log_level)
+
     # Load the data from hive structure
-    data_path = "data/database/single_family"
+    data_path = Path("data/database/single_family")
     df = load_combined_data(data_path)
     
     # Perform analyses
@@ -340,6 +344,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     main()
 
