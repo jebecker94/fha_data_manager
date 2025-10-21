@@ -1,34 +1,26 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Apr 18 11:11:58 2023
-@author: Jonathan E. Becker
-"""
+"""Dictionary helpers for FHA snapshot schemas."""
 
-# Import Packages
-import pyarrow as pa
+from __future__ import annotations
+
+from typing import Dict, List, Sequence
+
 import numpy as np
+import pyarrow as pa
 
-# FHA Dictionaries
-class FHADictionary():
-    """
-    Contains dictionary information for all FHA file types.
-    """
 
-    # Initialize
-    def __init__(self, ):
+SchemaMapping = Dict[str, str | type[np.generic]]
 
-        # Verify Dictionary Folder Exists
+
+class FHADictionary:
+    """Container for dictionary information covering FHA file types."""
+
+    def __init__(self) -> None:
         self.single_family = self._SingleFamilyDictionary()
         self.hecm = self._HECMDictionary()
 
-    # Single Family Class
-    class _SingleFamilyDictionary():
-
-        def __init__(self, ):            
-
-            # Set Data Types (Dictionary)
-            data_types = {
+    class _SingleFamilyDictionary:
+        def __init__(self) -> None:
+            data_types: SchemaMapping = {
                 'Property State': 'str',
                 'Property City': 'str',
                 'Property County': 'str',
@@ -48,10 +40,9 @@ class FHADictionary():
                 'Month': 'Int16',
                 'FHA_Index': 'str',
             }
-            self.data_types = data_types
+            self.data_types: SchemaMapping = data_types
 
-            # Set Schema
-            schema = [
+            schema_fields: Sequence[tuple[str, pa.DataType]] = [
                 ('Property State', pa.string()),
                 ('Property City', pa.string()),
                 ('Property County', pa.string()),
@@ -71,19 +62,12 @@ class FHADictionary():
                 ('Month', pa.int16()),
                 ('FHA_Index', pa.string()),
             ]
-            schema = pa.schema(schema)
-            self.schema = schema
-            
-            # Set Column Names
-            self.column_names = list(data_types.keys())
+            self.schema: pa.Schema = pa.schema(schema_fields)
+            self.column_names: List[str] = list(data_types.keys())
 
-    # HECM Class
-    class _HECMDictionary():
-
-        def __init__(self, ):
-
-            # Set Data Types
-            data_types = {
+    class _HECMDictionary:
+        def __init__(self) -> None:
+            data_types: SchemaMapping = {
                 'Property State': 'str',
                 'Property City': 'str',
                 'Property County': 'str',
@@ -106,10 +90,9 @@ class FHADictionary():
                 'Current Servicer ID': 'Int64',
                 'Previous Servicer ID': 'Int64',
             }
-            self.data_types = data_types
-            
-            # Set Schema
-            schema = [
+            self.data_types: SchemaMapping = data_types
+
+            schema_fields: Sequence[tuple[str, pa.DataType]] = [
                 ('Property State', pa.string()),
                 ('Property City', pa.string()),
                 ('Property County', pa.string()),
@@ -132,8 +115,5 @@ class FHADictionary():
                 ('Previous Servicer ID', pa.int64()),
                 ('FHA_Index', pa.string()),
             ]
-            schema = pa.schema(schema)
-            self.schema = schema
-            
-            # Set Column Names
-            self.column_names = list(data_types.keys())
+            self.schema: pa.Schema = pa.schema(schema_fields)
+            self.column_names: List[str] = list(data_types.keys())

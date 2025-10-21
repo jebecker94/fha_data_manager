@@ -8,6 +8,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
+from typing import TypeAlias
 from urllib.parse import urljoin, urlparse
 
 import requests  # type: ignore[import-untyped]
@@ -16,10 +17,14 @@ from bs4 import BeautifulSoup
 # Configure basic logging
 logger = logging.getLogger(__name__)
 
+PathLike: TypeAlias = Path | str
+Headers: TypeAlias = dict[str, str]
+ExcelExtensions: TypeAlias = tuple[str, ...]
+
 
 def download_excel_files_from_url(
     page_url: str,
-    destination_folder: Path | str,
+    destination_folder: PathLike,
     pause_length: int = 5,
     include_zip: bool = False,
     file_type: str | None = None,
@@ -50,7 +55,7 @@ def download_excel_files_from_url(
         dest_path.mkdir(parents=True, exist_ok=True)
 
         # Specify User Agent for getting page contents
-        headers = {
+        headers: Headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36'
         }
 
@@ -66,9 +71,9 @@ def download_excel_files_from_url(
         excel_links_found = 0
         for link_tag in soup.find_all('a', href=True):
             href = link_tag['href']
-            
+
             # Check if the link points to an Excel file
-            excel_extensions: tuple[str, ...] = ('.xlsx', '.xls', '.xlsm', '.xlsb')
+            excel_extensions: ExcelExtensions = ('.xlsx', '.xls', '.xlsm', '.xlsb')
             if include_zip : # Add Zip (presumed Excel Contents)
                 excel_extensions += ('.zip',)
             if href.lower().endswith(excel_extensions):
@@ -304,7 +309,7 @@ def standardize_filename(original_filename: str | Path, file_type: str | None) -
         return base_name  # Return original filename if conversion fails
 
 
-def process_zip_file(zip_path: Path | str, destination_folder: Path | str, file_type: str | None) -> None:
+def process_zip_file(zip_path: PathLike, destination_folder: PathLike, file_type: str | None) -> None:
     """Extract files from ``zip_path`` into ``destination_folder``.
 
     Any spreadsheets discovered inside the archive are renamed using

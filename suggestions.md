@@ -10,7 +10,7 @@
 - [ ] Enhance `create_lender_id_to_name_crosswalk` in `import_fha_data.py` by capturing the first/last observed periods for each ID–name pairing and flagging conflicting names, enabling clean joins to regulatory and financial datasets.
 
 ## Code Quality & Maintainability
-- [ ] Add comprehensive type hints throughout the codebase, particularly in `download.py`, `import_data.py`, and `mtgdicts.py`, to improve IDE support and catch type-related bugs early.
+- [x] Add comprehensive type hints throughout the codebase, particularly in `download.py`, `import_data.py`, and `mtgdicts.py`, to improve IDE support and catch type-related bugs early.
 - [ ] Implement consistent error handling patterns across modules with custom exception classes (e.g., `FHADataError`, `ValidationError`, `DownloadError`) for more informative error messages.
 - [ ] Add more docstring examples to complex functions, especially in `import_data.py` and `download.py`, showing typical usage patterns with small code snippets.
 - [ ] Refactor long functions in `import_data.py` (e.g., `convert_fha_sf_snapshots`, `convert_fha_hecm_snapshots`) by extracting repeated logic into smaller, testable helper functions.

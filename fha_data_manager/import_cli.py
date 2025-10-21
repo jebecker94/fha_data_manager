@@ -11,6 +11,7 @@ from fha_data_manager.utils.config import CLEAN_DIR, DATA_DIR, RAW_DIR
 from fha_data_manager.import_data import (
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
+    SnapshotType,
     save_clean_snapshots_to_db,
 )
 
@@ -25,7 +26,7 @@ class _ImportDefaults:
     raw_dir: Path
     clean_dir: Path
     database_dir: Path
-    file_type: str
+    file_type: SnapshotType
 
 
 _SINGLE_FAMILY_DEFAULTS = _ImportDefaults(
@@ -100,7 +101,7 @@ def _run_import_pipeline(
     raw_dir: Path,
     clean_dir: Path,
     database_dir: Path,
-    file_type: str,
+    file_type: SnapshotType,
     overwrite: bool,
     min_year: int,
     max_year: int,
