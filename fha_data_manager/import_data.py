@@ -6,12 +6,16 @@ from __future__ import annotations
 import datetime
 import logging
 from pathlib import Path
+from typing import Literal, TypeAlias
 
 import addfips
 import numpy as np
 import pandas as pd
 import polars as pl
 from mtgdicts import FHADictionary
+
+PathLike: TypeAlias = Path | str
+SnapshotType: TypeAlias = Literal['single_family', 'hecm']
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +168,7 @@ def add_county_fips(
     unique_counties = standardize_county_names(unique_counties, state_col=state_col, county_col=county_col)
 
     # Create list to store county mappings
-    county_map = []
+    county_map: list[pl.LazyFrame] = []
 
     # Initialize AddFIPS
     logger.info("Initializing AddFIPS...")
@@ -172,9 +176,9 @@ def add_county_fips(
 
     # Generate FIPS codes for each unique county
     logger.info("Generating FIPS codes for unique counties...")
-    for row in unique_counties.collect().iter_rows():
-        df_row = pl.LazyFrame({state_col: [row[0]], county_col: [row[1]]})
-        fips = af.get_county_fips(row[1], row[0])
+    for state, county in unique_counties.collect().iter_rows():
+        df_row = pl.LazyFrame({state_col: [state], county_col: [county]})
+        fips = af.get_county_fips(county, state)
         df_row = df_row.with_columns(pl.lit(fips).alias(fips_col))
         county_map.append(df_row)
     
@@ -191,87 +195,101 @@ def add_county_fips(
     return df
 
 
-def create_lender_id_to_name_crosswalk(clean_data_folder: str | Path) -> pl.LazyFrame:
-    """
-    Create a crosswalk between lender ID and lender name.
-
-    Note: Requires the user to first run the convert_fha_sf_snapshots and convert_fha_hecm_snapshots functions.
-    """
+def create_lender_id_to_name_crosswalk(clean_data_folder: PathLike) -> pl.DataFrame:
+    """Create a lender ID/name crosswalk from cleaned snapshot parquet files."""
 
     logger.info("Creating lender ID to name crosswalk...")
 
-    # Create crosswalk
-    df = []
+    lazy_frames: list[pl.LazyFrame] = []
 
-    # Combine institution names and IDs from all single family and HECM files
     clean_path = Path(clean_data_folder)
     sf_files = sorted((clean_path / 'single_family').glob('fha_sf_snapshot*.parquet'))
-    sf_files = [file for file in sf_files if '201408' not in file.name] # Skip August 2014 for single family sponsor names (see data quality notes in README.md)
+    sf_files = [file for file in sf_files if '201408' not in file.name]
     for file in sf_files:
-
-        # Get file date
         logger.info("Get institution data from: %s", file)
-        file_date = file.stem.split('_')[-1]
-        file_date = pd.to_datetime(file_date, format='%Y%m%d')
+        file_date = pd.to_datetime(file.stem.split('_')[-1], format='%Y%m%d')
 
-        # Load originating mortgagee names and IDs from all single family files
-        df_a = pl.scan_parquet(str(file))
-        df_a = df_a.select(['Originating Mortgagee Number', 'Originating Mortgagee'])
-        df_a = df_a.rename({'Originating Mortgagee Number': 'Institution_Number',
-                        'Originating Mortgagee': 'Institution_Name'})
-        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
-        df.append(df_a)
+        sf_originators = (
+            pl.scan_parquet(str(file))
+            .select(['Originating Mortgagee Number', 'Originating Mortgagee'])
+            .rename(
+                {
+                    'Originating Mortgagee Number': 'Institution_Number',
+                    'Originating Mortgagee': 'Institution_Name',
+                }
+            )
+            .with_columns(pl.lit(file_date).alias('File_Date'))
+        )
+        lazy_frames.append(sf_originators)
 
-        # Load sponsor names and IDs from all single family files
-        df_a = pl.scan_parquet(str(file))
-        df_a = df_a.select(['Sponsor Number', 'Sponsor Name'])
-        df_a = df_a.rename({'Sponsor Number': 'Institution_Number',
-                        'Sponsor Name': 'Institution_Name'})
-        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
-        df.append(df_a)
+        sf_sponsors = (
+            pl.scan_parquet(str(file))
+            .select(['Sponsor Number', 'Sponsor Name'])
+            .rename(
+                {
+                    'Sponsor Number': 'Institution_Number',
+                    'Sponsor Name': 'Institution_Name',
+                }
+            )
+            .with_columns(pl.lit(file_date).alias('File_Date'))
+        )
+        lazy_frames.append(sf_sponsors)
 
-    # Add lender data from HECM files
     hecm_files = sorted((clean_path / 'hecm').glob('fha_hecm_snapshot*.parquet'))
     for file in hecm_files:
-
-        # Get file date
         logger.info("Get institution data from: %s", file)
-        file_date = file.stem.split('_')[-1]
-        file_date = pd.to_datetime(file_date, format='%Y%m%d')
+        file_date = pd.to_datetime(file.stem.split('_')[-1], format='%Y%m%d')
 
-        # Load originating mortgagee names and IDs from all HECM files
-        df_a = pl.scan_parquet(str(file))
-        df_a = df_a.select(['Originating Mortgagee Number', 'Originating Mortgagee'])
-        df_a = df_a.rename({'Originating Mortgagee Number': 'Institution_Number',
-                        'Originating Mortgagee': 'Institution_Name'})
-        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
-        df.append(df_a)
+        hecm_originators = (
+            pl.scan_parquet(str(file))
+            .select(['Originating Mortgagee Number', 'Originating Mortgagee'])
+            .rename(
+                {
+                    'Originating Mortgagee Number': 'Institution_Number',
+                    'Originating Mortgagee': 'Institution_Name',
+                }
+            )
+            .with_columns(pl.lit(file_date).alias('File_Date'))
+        )
+        lazy_frames.append(hecm_originators)
 
-        # Load sponsor names and IDs from all HECM files
-        df_a = pl.scan_parquet(str(file))
-        df_a = df_a.select(['Sponsor Number', 'Sponsor Name'])
-        df_a = df_a.rename({'Sponsor Number': 'Institution_Number',
-                        'Sponsor Name': 'Institution_Name'})
-        df_a = df_a.with_columns(pl.lit(file_date).alias('File_Date'))
-        df.append(df_a)
-    
-    # Combine crosswalks
-    df = pl.concat(df, how='diagonal_relaxed')
-    df = df.unique()
-    df = df.drop_nulls()
-    df = df.sort(['Institution_Number','File_Date','Institution_Name'])
-    df = df.collect()
+        hecm_sponsors = (
+            pl.scan_parquet(str(file))
+            .select(['Sponsor Number', 'Sponsor Name'])
+            .rename(
+                {
+                    'Sponsor Number': 'Institution_Number',
+                    'Sponsor Name': 'Institution_Name',
+                }
+            )
+            .with_columns(pl.lit(file_date).alias('File_Date'))
+        )
+        lazy_frames.append(hecm_sponsors)
 
-    # Min and Max Date
-    df = df.with_columns(
-        pl.col('File_Date').min().over(['Institution_Number','Institution_Name']).alias('Min_Date'),
-        pl.col('File_Date').max().over(['Institution_Number','Institution_Name']).alias('Max_Date'),
+    combined = (
+        pl.concat(lazy_frames, how='diagonal_relaxed')
+        .unique()
+        .drop_nulls()
+        .sort(['Institution_Number', 'File_Date', 'Institution_Name'])
+        .collect()
     )
-    df = df.drop(['File_Date'])
-    df = df.unique()
 
-    # Return crosswalk
-    return df
+    enriched = (
+        combined.with_columns(
+            pl.col('File_Date')
+            .min()
+            .over(['Institution_Number', 'Institution_Name'])
+            .alias('Min_Date'),
+            pl.col('File_Date')
+            .max()
+            .over(['Institution_Number', 'Institution_Name'])
+            .alias('Max_Date'),
+        )
+        .drop(['File_Date'])
+        .unique()
+    )
+
+    return enriched
 
 
 # Single-Family
@@ -281,7 +299,7 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     # Rename Columns to Standardize
-    rename_dict = {
+    rename_dict: dict[str, str] = {
         'Endorsement Month': 'Month',
         'Original Mortgage Amount': 'Mortgage Amount',
         'Origination Mortgagee/Sponsor Originator': 'Originating Mortgagee',
@@ -295,15 +313,15 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
         'Endorsment Year': 'Year',
         'Endorsement Year': 'Year',
     }
-    df.columns = [x.replace('_',' ').strip() for x in df.columns]
-    df = df.rename(columns = rename_dict, errors = 'ignore')
+    df.columns = [x.replace('_', ' ').strip() for x in df.columns]
+    df = df.rename(columns=rename_dict, errors='ignore')
 
     # Drop Unnamed Columns
     unnamed_columns = [x for x in df.columns if 'Unnamed' in x]
-    df = df.drop(columns = unnamed_columns)
+    df = df.drop(columns=unnamed_columns)
 
     # Convert Columns to Numeric
-    numeric_columns = [
+    numeric_columns: list[str] = [
         'Property Zip',
         'Originating Mortgagee Number',
         'Sponsor Number',
@@ -313,8 +331,8 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
         'Year',
         'Month',
     ]
-    for column in numeric_columns :
-        if column in df.columns :
+    for column in numeric_columns:
+        if column in df.columns:
             df[column] = pd.to_numeric(df[column], errors='coerce')
     
     # Drop Bad Observations (Only One I Know)
@@ -338,9 +356,9 @@ def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
     # Convert Columns
     fhad = FHADictionary()
     data_types = fhad.single_family.data_types
-    for row in data_types.items() :
-        if row[0] in df.columns :
-            df[row[0]] = df[row[0]].astype(row[1])
+    for column, dtype in data_types.items():
+        if column in df.columns:
+            df[column] = df[column].astype(dtype)
 
     # Return DataFrame
     return df
@@ -387,16 +405,15 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
                     xls = pd.ExcelFile(input_file)
                     sheets = xls.sheet_names
                     sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x]
-                    df_sheets = pd.read_excel(input_file, sheets)
+                    df_sheets: dict[str, pd.DataFrame] = pd.read_excel(input_file, sheets)
 
                     # Read Sheets
-                    df = []
-                    for df_s in df_sheets.values() :
-                        df_s = clean_sf_sheets(df_s)
-                        df.append(df_s)
+                    frames: list[pd.DataFrame] = []
+                    for df_s in df_sheets.values():
+                        frames.append(clean_sf_sheets(df_s))
 
                     # Combine Sheets and Save
-                    df = pd.concat(df)
+                    df = pd.concat(frames)
                     
                     # Create FHA Index Variable
                     df['FHA_Index'] = [f'{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
@@ -428,7 +445,7 @@ def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     # Rename Columns
-    rename_dict = {
+    rename_dict: dict[str, str] = {
         'NMLS*': 'NMLS',
         'Sponosr Number': 'Sponsor Number',
         'Standard Saver': 'Standard/Saver',
@@ -444,16 +461,16 @@ def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
         'Sponsored Originator': 'Sponsor Originator',
     }   
     
-    df.columns = [x.replace('_',' ').strip() for x in df.columns]
-    df = df.rename(columns = rename_dict, errors = 'ignore')
+    df.columns = [x.replace('_', ' ').strip() for x in df.columns]
+    df = df.rename(columns=rename_dict, errors='ignore')
 
     # Replace Not Available and Replace np.nan Columns with NoneTypes
-    for col in df.columns :
+    for col in df.columns:
         df.loc[df[col] == 'Not Available', col] = None
         df.loc[pd.isna(df[col]), col] = None
 
     # Convert Columns
-    numeric_cols = [
+    numeric_cols: list[str] = [
         'Property Zip',
         'Originating Mortgagee Number',
         'Sponsor Number',
@@ -466,16 +483,16 @@ def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
         'Current Servicer ID',
         'Previous Servicer ID',
     ]
-    for col in numeric_cols :
-        if col in df.columns :
-            df[col] = pd.to_numeric(df[col], errors = 'coerce')
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
 
     # Convert Columns
     fhad = FHADictionary()
     data_types = fhad.hecm.data_types
-    for row in data_types.items() :
-        if row[0] in df.columns :
-            df[row[0]] = df[row[0]].astype(row[1])
+    for column, dtype in data_types.items():
+        if column in df.columns:
+            df[column] = df[column].astype(dtype)
 
     return df
 
@@ -524,26 +541,26 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
                     xls = pd.ExcelFile(input_file)
                     sheets = xls.sheet_names
                     sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
+                    df_sheets: dict[str, pd.DataFrame] = {}
                     if sheets:
                         df_sheets = pd.read_excel(input_file, sheets)
 
                     # Read Sheets
-                    df = []
-                    for df_s in df_sheets.values() :
-                        df_s = clean_hecm_sheets(df_s)
-                        df.append(df_s)
+                    frames: list[pd.DataFrame] = []
+                    for df_s in df_sheets.values():
+                        frames.append(clean_hecm_sheets(df_s))
 
                     # Combine Sheets and Save
-                    if df :
-                        df = pd.concat(df)
+                    if frames:
+                        df = pd.concat(frames)
 
                         # Create FHA Index Variable
                         df['FHA_Index'] = [f'H{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
 
                         # Save
-                        try :
+                        try:
                             df.to_parquet(output_file, index=False)
-                        except Exception as e :
+                        except Exception as e:
                             logger.error('Error saving file %s: %s', output_file, e)
                 else :
 
@@ -556,7 +573,7 @@ def save_clean_snapshots_to_db(
     save_folder: Path,
     min_year: int = 2010,
     max_year: int = 2025,
-    file_type: str = 'single_family',
+    file_type: SnapshotType = 'single_family',
     add_fips: bool = True,
     add_date: bool = True,
 ) -> None:
@@ -565,13 +582,13 @@ def save_clean_snapshots_to_db(
     """
     
     # Get Files and Combine
-    df = []
+    frames: list[pl.LazyFrame] = []
     for year in range(min_year, max_year+1) :
         files = sorted(data_folder.glob(f'fha_*snapshot*{year}*.parquet'))
         for file in files :
             df_a = pl.scan_parquet(str(file))
-            df.append(df_a)
-    df = pl.concat(df, how='diagonal_relaxed')
+            frames.append(df_a)
+    df = pl.concat(frames, how='diagonal_relaxed')
 
     
     # Replace null values with empty strings
