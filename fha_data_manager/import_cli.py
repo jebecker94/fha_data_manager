@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from config import CLEAN_DIR, DATA_DIR, RAW_DIR
-from import_fha_data import (
+from fha_data_manager.utils.config import CLEAN_DIR, DATA_DIR, RAW_DIR
+from fha_data_manager.import_data import (
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
     save_clean_snapshots_to_db,

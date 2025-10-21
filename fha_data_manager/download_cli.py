@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Callable, Sequence
 
-from download_fha_data import download_excel_files_from_url
+from fha_data_manager.download import download_excel_files_from_url
 
 SINGLE_FAMILY_SNAPSHOT_URL = "https://www.hud.gov/stat/sfh/fha-sf-portfolio-snapshot"
 HECM_SNAPSHOT_URL = "https://www.hud.gov/hud-partners/hecmsf-snapshot"
