@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import datetime
 import logging
+from dataclasses import dataclass
+from multiprocessing import get_context
+from os import cpu_count
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Callable, Literal, TypeAlias
 
 import addfips
 import numpy as np
@@ -384,47 +387,55 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
 
     """
 
+    save_folder.mkdir(parents=True, exist_ok=True)
+
+    tasks: list[_SnapshotConversionTask] = []
+
     # Read Data File-by-File
     for year in range(2010, 2099) :
         for mon in range(1, 13) :
-            # Check if Raw File Exists and Convert
             files = sorted(data_folder.glob(f'fha_sf_snapshot_{year}{mon:02d}01*.xls*'))
-            if files :
+            if not files:
+                continue
 
-                # File Names
-                input_file = files[0]
-                output_file = save_folder / f'fha_sf_snapshot_{year}{mon:02d}01.parquet'
+            input_file = files[0]
+            output_file = save_folder / f'fha_sf_snapshot_{year}{mon:02d}01.parquet'
 
-                # Convert File if Not Exists or if Overwrite Mode is On
-                if not output_file.exists() or overwrite :
+            if output_file.exists() and not overwrite:
+                logger.info('File %s already exists!', output_file)
+                continue
 
-                    # Display Progress
-                    logger.info('Reading and Converting File: %s', input_file)
+            tasks.append(
+                _SnapshotConversionTask(
+                    input_file=input_file,
+                    output_file=output_file,
+                    year=year,
+                    month=mon,
+                )
+            )
 
-                    # Read File
-                    xls = pd.ExcelFile(input_file)
-                    sheets = xls.sheet_names
-                    sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x]
-                    df_sheets: dict[str, pd.DataFrame] = pd.read_excel(input_file, sheets)
+    _run_parallel_conversions(tasks, _convert_single_family_snapshot)
 
-                    # Read Sheets
-                    frames: list[pd.DataFrame] = []
-                    for df_s in df_sheets.values():
-                        frames.append(clean_sf_sheets(df_s))
 
-                    # Combine Sheets and Save
-                    df = pd.concat(frames)
-                    
-                    # Create FHA Index Variable
-                    df['FHA_Index'] = [f'{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
-                    
-                    # Save
-                    df.to_parquet(output_file, index=False)
+def _convert_single_family_snapshot(task: _SnapshotConversionTask) -> None:
+    """Worker function for converting a single-family monthly snapshot."""
 
-                else :
+    logger.info('Reading and Converting File: %s', task.input_file)
 
-                    # Display Progress
-                    logger.info('File %s already exists!', output_file)
+    xls = pd.ExcelFile(task.input_file)
+    sheets = xls.sheet_names
+    sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x]
+    df_sheets: dict[str, pd.DataFrame] = {}
+    if sheets:
+        df_sheets = pd.read_excel(task.input_file, sheets)
+
+    frames = [clean_sf_sheets(df_s) for df_s in df_sheets.values()]
+    if not frames:
+        return
+
+    df = pd.concat(frames)
+    df['FHA_Index'] = [f'{task.year}{task.month:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
+    df.to_parquet(task.output_file, index=False)
 
 
 # HECM
@@ -520,52 +531,58 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
 
     """
 
+    save_folder.mkdir(parents=True, exist_ok=True)
+
+    tasks: list[_SnapshotConversionTask] = []
+
     # Read Data File-by-File
     for year in range(2010, 2099) :
         for mon in range(1, 13) :
-            # Check if Raw File Exists and Convert
             files = sorted(data_folder.glob(f'fha_hecm_snapshot_{year}{mon:02d}01*.xls*'))
-            if files :
+            if not files:
+                continue
 
-                # File Names
-                input_file = files[0]
-                output_file = save_folder / f'fha_hecm_snapshot_{year}{mon:02d}01.parquet'
+            input_file = files[0]
+            output_file = save_folder / f'fha_hecm_snapshot_{year}{mon:02d}01.parquet'
 
-                # Convert File if Not Exists or if Overwrite Mode is On
-                if not output_file.exists() or overwrite :
+            if output_file.exists() and not overwrite:
+                logger.info('File %s already exists!', output_file)
+                continue
 
-                    # Display Progress
-                    logger.info('Reading and Converting File: %s', input_file)
+            tasks.append(
+                _SnapshotConversionTask(
+                    input_file=input_file,
+                    output_file=output_file,
+                    year=year,
+                    month=mon,
+                )
+            )
 
-                    # Read File
-                    xls = pd.ExcelFile(input_file)
-                    sheets = xls.sheet_names
-                    sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
-                    df_sheets: dict[str, pd.DataFrame] = {}
-                    if sheets:
-                        df_sheets = pd.read_excel(input_file, sheets)
+    _run_parallel_conversions(tasks, _convert_hecm_snapshot)
 
-                    # Read Sheets
-                    frames: list[pd.DataFrame] = []
-                    for df_s in df_sheets.values():
-                        frames.append(clean_hecm_sheets(df_s))
 
-                    # Combine Sheets and Save
-                    if frames:
-                        df = pd.concat(frames)
+def _convert_hecm_snapshot(task: _SnapshotConversionTask) -> None:
+    """Worker function for converting a HECM monthly snapshot."""
 
-                        # Create FHA Index Variable
-                        df['FHA_Index'] = [f'H{year}{mon:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
+    logger.info('Reading and Converting File: %s', task.input_file)
 
-                        # Save
-                        try:
-                            df.to_parquet(output_file, index=False)
-                        except Exception as e:
-                            logger.error('Error saving file %s: %s', output_file, e)
-                else :
+    xls = pd.ExcelFile(task.input_file)
+    sheets = xls.sheet_names
+    sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
+    df_sheets: dict[str, pd.DataFrame] = {}
+    if sheets:
+        df_sheets = pd.read_excel(task.input_file, sheets)
 
-                    # Display Progress
-                    logger.info('File %s already exists!', output_file)
+    frames = [clean_hecm_sheets(df_s) for df_s in df_sheets.values()]
+    if not frames:
+        return
+
+    df = pd.concat(frames)
+    df['FHA_Index'] = [f'H{task.year}{task.month:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
+    try:
+        df.to_parquet(task.output_file, index=False)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error('Error saving file %s: %s', task.output_file, exc)
 
 
 def save_clean_snapshots_to_db(
@@ -645,3 +662,34 @@ def save_clean_snapshots_to_db(
         mkdir=True,
     )
 
+@dataclass(frozen=True)
+class _SnapshotConversionTask:
+    """Encapsulate the information needed to convert a monthly snapshot."""
+
+    input_file: Path
+    output_file: Path
+    year: int
+    month: int
+
+
+def _run_parallel_conversions(
+    tasks: list[_SnapshotConversionTask],
+    worker: Callable[[_SnapshotConversionTask], None],
+) -> None:
+    """Execute snapshot conversion tasks, leveraging multiprocessing when useful."""
+
+    if not tasks:
+        return
+
+    # ``spawn`` works across platforms and avoids issues when the project is embedded in
+    # other applications. Fallback to a sequential loop if only one task needs work.
+    process_count = min(len(tasks), max(1, cpu_count() or 1))
+
+    if process_count <= 1:
+        for task in tasks:
+            worker(task)
+        return
+
+    ctx = get_context("spawn")
+    with ctx.Pool(processes=process_count) as pool:
+        pool.map(worker, tasks)
