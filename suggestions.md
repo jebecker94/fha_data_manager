@@ -5,7 +5,7 @@
 - [ ] Implement consistent error handling patterns across modules with custom exception classes (e.g., `FHADataError`, `ValidationError`, `DownloadError`) for more informative error messages.
 - [ ] Add more docstring examples to complex functions, especially in `import_data.py` and `download.py`, showing typical usage patterns with small code snippets.
 - [ ] Refactor long functions in `import_data.py` (e.g., `convert_fha_sf_snapshots`, `convert_fha_hecm_snapshots`) by extracting repeated logic into smaller, testable helper functions.
-- [ ] Add logging levels consistently across all modules (currently some modules use logging better than others) to aid in debugging data processing issues.
+- [x] Add logging levels consistently across all modules (currently some modules use logging better than others) to aid in debugging data processing issues.
 
 ## Testing & Quality Assurance
 - [ ] Expand test coverage to include `download.py`, `download_cli.py`, `import_data.py`, and `import_cli.py` - currently these core modules lack unit tests.

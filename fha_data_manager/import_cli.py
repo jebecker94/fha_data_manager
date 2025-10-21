@@ -14,6 +14,7 @@ from fha_data_manager.import_data import (
     SnapshotType,
     save_clean_snapshots_to_db,
 )
+from fha_data_manager.utils.logging import configure_logging
 
 DEFAULT_MIN_YEAR = 2010
 DEFAULT_MAX_YEAR = 2025
@@ -213,6 +214,14 @@ def get_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Convert FHA snapshot workbooks and load them into the database.",
     )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help=(
+            "Logging verbosity (default: %(default)s). Accepts standard level "
+            "names or numeric values."
+        ),
+    )
     subparsers = parser.add_subparsers(
         dest="snapshot_type",
         required=True,
@@ -247,6 +256,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = get_argument_parser()
     args = parser.parse_args(argv)
+
+    configure_logging(args.log_level)
 
     min_year = args.min_year
     max_year = args.max_year
