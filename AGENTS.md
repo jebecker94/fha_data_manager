@@ -82,5 +82,5 @@
 
 
 ## Suggestions Tracking Instructions
-- When the user explicitly requests work that corresponds to an item in `suggestions.md`, update that item's checkbox from `- [ ]` to `- [x]` as part of fulfilling the request.
+- When the user explicitly requests work that corresponds to an item in `SUGGESTIONS.md`, update that item's checkbox from `- [ ]` to `- [x]` as part of fulfilling the request.
 - Do not mark a suggestion as complete unless the user has asked for that specific item.
