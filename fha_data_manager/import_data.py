@@ -385,6 +385,21 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
     -------
     None.
 
+    Examples
+    --------
+    Convert an extracted batch of spreadsheets into parquet files ready for
+    downstream processing:
+
+    >>> from pathlib import Path
+    >>> raw_sf = Path("data/raw/single_family")
+    >>> clean_sf = Path("data/clean/single_family")
+    >>> convert_fha_sf_snapshots(raw_sf, clean_sf)
+
+    To force regeneration of previously processed months, pass
+    ``overwrite=True``:
+
+    >>> convert_fha_sf_snapshots(raw_sf, clean_sf, overwrite=True)
+
     """
 
     save_folder.mkdir(parents=True, exist_ok=True)
@@ -529,6 +544,18 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
     -------
     None.
 
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> raw_hecm = Path("data/raw/hecm")
+    >>> clean_hecm = Path("data/clean/hecm")
+    >>> convert_fha_hecm_snapshots(raw_hecm, clean_hecm)
+
+    Use the ``overwrite`` flag to reprocess files after updating the cleaning
+    logic:
+
+    >>> convert_fha_hecm_snapshots(raw_hecm, clean_hecm, overwrite=True)
+
     """
 
     save_folder.mkdir(parents=True, exist_ok=True)
@@ -596,6 +623,47 @@ def save_clean_snapshots_to_db(
 ) -> None:
     """
     Saves cleaned snapshots to a database.
+
+    Parameters
+    ----------
+    data_folder : pathlib.Path
+        Location containing the cleaned parquet monthly snapshots.
+    save_folder : pathlib.Path
+        Destination directory for the hive-partitioned parquet database.
+    min_year, max_year : int, optional
+        Inclusive range of years to scan when gathering monthly files.
+    file_type : {"single_family", "hecm"}, optional
+        Indicates which schema adjustments to apply during export.
+    add_fips : bool, optional
+        When ``True`` (default) county FIPS codes are appended to the output.
+    add_date : bool, optional
+        When ``True`` (default) a ``Date`` column is synthesized from year and
+        month fields.
+
+    Returns
+    -------
+    None.
+
+    Examples
+    --------
+    Build the on-disk database after converting raw files:
+
+    >>> from pathlib import Path
+    >>> clean_sf = Path("data/clean/single_family")
+    >>> db_sf = Path("data/database/single_family")
+    >>> save_clean_snapshots_to_db(clean_sf, db_sf, file_type="single_family")
+
+    Restrict the exported range to recent years and skip FIPS enrichment for a
+    faster exploratory build:
+
+    >>> save_clean_snapshots_to_db(
+    ...     clean_sf,
+    ...     db_sf,
+    ...     min_year=2020,
+    ...     max_year=2024,
+    ...     add_fips=False,
+    ... )
+
     """
     
     # Get Files and Combine
