@@ -9,6 +9,7 @@ This directory contains example scripts demonstrating the complete workflow for 
 3. **Load & Query** - Load and query the processed data
 4. **Validate** - Validate data quality
 5. **Analyze** - Perform exploratory and institutional analysis
+6. **Network Analysis** - Analyze sponsor-originator relationship networks
 
 ## Quick Start
 
@@ -29,6 +30,9 @@ python examples/04_validate_data.py
 
 # 5. Analyze the data
 python examples/05_analyze_data.py
+
+# 6. Network analysis
+python examples/06_network_analysis.py
 ```
 
 ## Example Scripts
@@ -47,6 +51,9 @@ Runs data quality validation checks on the database.
 
 ### 05_analyze_data.py
 Performs exploratory and institutional analysis on the data.
+
+### 06_network_analysis.py
+Analyzes sponsor-originator relationship networks using graph theory and centrality metrics.
 
 ## Notes
 

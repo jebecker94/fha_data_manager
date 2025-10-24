@@ -272,6 +272,36 @@ def analyze_loan_characteristics(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     return results
 
 
+def analyze_refinance_share(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Analyze the share of refinanced loans over time.
+
+    The output should be a DataFrame with the following columns:
+    - Date
+    - purchase_loan_count
+    - refinance_loan_count
+    - refinance_share
+    """
+
+    # Check for Date column and create it if it doesn't exist
+    if 'Date' not in df.columns:
+        df = df.with_columns(
+            pl.concat_str([
+                pl.col('Year').cast(pl.Utf8).str.zfill(4),
+                pl.col('Month').cast(pl.Utf8).str.zfill(2),
+            ], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
+        )
+
+    # Group by year and month and calculate the share of refinance loans
+    df = df.group_by(['Date']).agg(
+        pl.col('Loan Purpose').fill_null('').str.to_lowercase().str.contains('purchase').sum().alias('purchase_loan_count'),
+        pl.col('Loan Purpose').fill_null('').str.to_lowercase().str.contains('refi').sum().alias('refinance_loan_count'),
+    )
+    df = df.with_columns(
+        (pl.col('refinance_loan_count') / (pl.col('purchase_loan_count') + pl.col('refinance_loan_count'))).alias('refinance_share'),
+    )
+    return df
+
 def print_summary_statistics(stats_dict: Dict[str, pl.DataFrame], section: str) -> None:
     """
     Print formatted summary statistics.
@@ -340,6 +370,21 @@ def main(log_level: str | int = "INFO") -> None:
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig('output/loan_purpose_dist.png')
+    plt.close()
+
+    # Plot 4: Refinance Share Over Time
+    # Stacked line chart of purchase and refinance loans by year
+    fig, ax = plt.subplots(figsize=(12, 6))
+    refinance_share_df = analyze_refinance_share(df)
+    refinance_share_df = refinance_share_df.sort('Date')
+    ax.plot(refinance_share_df['Date'], refinance_share_df['purchase_loan_count'], label='Purchase Loans')
+    ax.plot(refinance_share_df['Date'], refinance_share_df['refinance_loan_count'], label='Refinance Loans')
+    plt.title('Purchase and Refinance Loans by Year')
+    plt.xlabel('Date')
+    plt.ylabel('Number of Loans')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('output/purchase_and_refinance_trend.png')
     plt.close()
 
 
