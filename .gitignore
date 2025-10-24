@@ -24,3 +24,6 @@ logs/
 *.png
 
 *egg-info/
+
+# Temp files
+examples/temp_browse_sf_data.py

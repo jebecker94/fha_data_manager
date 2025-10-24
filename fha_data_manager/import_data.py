@@ -654,9 +654,8 @@ def save_clean_snapshots_to_db(
     # Sink
     df.sink_parquet(
         pl.PartitionByKey(
-            # save_folder / "{key[0].name}={key[0].value}/{key[1].name}={key[1].value}/000.parquet",
             save_folder,
-            by=[pl.col('Year'), pl.col('Month')],
+            by=['Year','Month'],
             include_key=True,
         ),
         mkdir=True,
