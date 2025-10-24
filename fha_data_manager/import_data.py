@@ -15,7 +15,7 @@ import addfips
 import numpy as np
 import pandas as pd
 import polars as pl
-from mtgdicts import FHADictionary
+from .utils.mtgdicts import FHADictionary
 
 PathLike: TypeAlias = Path | str
 SnapshotType: TypeAlias = Literal['single_family', 'hecm']

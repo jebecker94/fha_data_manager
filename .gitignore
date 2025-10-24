@@ -1,153 +1,26 @@
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg
-*.egg-info/
-dist/
-build/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.manifest
-*.spec
 
 # Virtual Environments
 .env
 .venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
 .python-version
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.project
-.pydevproject
-.settings/
-*.code-workspace
 
 # Cursor
 .cursor/
-
-# Testing
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.tox/
-.nox/
-coverage.xml
-*.cover
-.hypothesis/
-
-# Type checking
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.pyre/
-.pytype/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
-
-# Environment variables
-.env
-.env.local
-.env.*.local
 
 # Data directories (large files)
 data/raw/
 data/clean/
 data/clean/archived/
 data/database/
-*.parquet
-*.xlsx
-*.xls
-*.csv
-!data/data_inventory.csv
-
-# Keep directory structure but ignore contents
-data/raw/.gitkeep
-data/clean/.gitkeep
-data/database/.gitkeep
-
-# Output files
-output/*
-!output/.gitkeep
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.pdf
-!docs/**/*.png
-!docs/**/*.jpg
 
 # Logs
 logs/
 *.log
 *.log.*
 
-# Package files
-*.zip
-*.tar.gz
-*.tar.bz2
-*.rar
-*.7z
+# Image outputs
+*.png
 
-# OS files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-desktop.ini
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.swp
-*~
-
-# Documentation build
-docs/_build/
-docs/_static/
-docs/_templates/
-
-# Deprecated (if you want to keep it out of repo)
-deprecated/
-deprecated_functions.py
-
-# Local configuration overrides
-local_config.py
-config.local.py
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-
-# Compiled translations
-*.mo
-
-# Distribution
-*.whl
+*egg-info/
