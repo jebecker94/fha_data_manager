@@ -193,30 +193,6 @@ python -m fha_data_manager.analysis.institutions
 - `output/institution_mapping_errors.csv` - Detected errors
 - `output/institution_analysis_report.txt` - Detailed analysis report
 
-## Interactive Data Browser
-
-Explore data interactively with summary statistics:
-
-```python
-from fha_data_manager.analysis.browser import browse_data
-
-browse_data("data/database/single_family")
-```
-
-Or:
-
-```bash
-python -m fha_data_manager.analysis.browser
-```
-
-This provides:
-- Categorical column summaries
-- Geographic distributions
-- FIPS code coverage analysis
-- State-specific deep dives
-- Interest rate distributions
-- Time series visualizations
-
 ## Custom Analysis Examples
 
 ### Example 1: Market Concentration

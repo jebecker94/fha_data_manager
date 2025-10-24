@@ -11,8 +11,7 @@ fha_data_manager/
 ├── import_cli.py         # Import/cleaning functionality
 ├── analysis/             # Analysis modules
 │   ├── exploratory.py   # Exploratory data analysis
-│   ├── institutions.py   # Institutional analysis
-│   └── browser.py        # Interactive data browser
+│   └── institutions.py   # Institutional analysis
 ├── validation/           # Validation modules
 │   └── validators.py     # Data quality validators
 └── utils/                # Utility modules
@@ -167,15 +166,6 @@ Generate comprehensive analysis report.
 - `institution_crosswalk.csv`
 - `institution_mapping_errors.csv`
 - `institution_analysis_report.txt`
-
-### Browser
-
-```python
-from fha_data_manager.analysis.browser import browse_data
-```
-
-#### `browse_data(data_path: str | Path = "data/database/single_family") -> None`
-Interactive data browsing with summary statistics.
 
 ## Validation Module (`fha_data_manager.validation`)
 
