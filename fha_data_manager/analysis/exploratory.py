@@ -353,9 +353,422 @@ def print_summary_statistics(stats_dict: Dict[str, pl.DataFrame], section: str) 
         logger.info("\n%s", df)
 
 
-def main(log_level: str | int = "INFO") -> None:
-    """Run exploratory data analysis and generate visualizations."""
+def plot_active_lenders_over_time(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot the number of active FHA lenders over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating active lenders over time plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Originating Mortgagee', 'Year'])
+    df_temp = df_temp.group_by('Year').agg([
+        pl.col('Originating Mortgagee').n_unique().alias('Active Lenders')
+    ])
+    df_temp = df_temp.collect().sort('Year')
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(df_temp['Year'], df_temp['Active Lenders'], marker='o', linewidth=2)
+    plt.title('Number of Active FHA Lenders by Year')
+    plt.xlabel('Year')
+    plt.ylabel('Number of Active Lenders')
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'active_lenders_trend.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
 
+
+def plot_average_loan_size_over_time(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot the average FHA loan size over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating average loan size over time plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Mortgage Amount', 'Year'])
+    df_temp = df_temp.group_by('Year').agg([
+        pl.col('Mortgage Amount').mean().alias('mean'),
+        pl.col('Mortgage Amount').median().alias('median')
+    ])
+    df_temp = df_temp.collect().sort('Year')
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(df_temp['Year'], df_temp['mean'], marker='o', linewidth=2, label='Mean')
+    plt.plot(df_temp['Year'], df_temp['median'], marker='s', linewidth=2, label='Median')
+    plt.title('Average FHA Loan Size by Year')
+    plt.xlabel('Year')
+    plt.ylabel('Average Loan Amount ($)')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'avg_loan_size_trend.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_loan_purpose_distribution(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot the distribution of FHA loans by purpose.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating loan purpose distribution plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Loan Purpose'])
+    df_temp = df_temp.group_by('Loan Purpose').agg([
+        pl.len().alias('count')
+    ])
+    df_temp = df_temp.collect().sort('count', descending=True)
+    
+    plt.figure(figsize=(10, 6))
+    plt.bar(df_temp['Loan Purpose'], df_temp['count'])
+    plt.title('Distribution of FHA Loans by Purpose')
+    plt.ylabel('Number of Loans')
+    plt.xlabel('Loan Purpose')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'loan_purpose_dist.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_purchase_and_refinance_trend(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot purchase and refinance loan trends over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating purchase and refinance trend plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Loan Purpose', 'Date'])
+    df_temp = df_temp.with_columns([
+        pl.when(pl.col('Loan Purpose').str.contains('Purchase'))
+        .then(pl.lit('Purchase'))
+        .otherwise(pl.lit('Refinance'))
+        .alias('loan_category')
+    ])
+    df_temp = df_temp.group_by(['Date', 'loan_category']).agg([
+        pl.len().alias('loan_count')
+    ])
+    df_temp = df_temp.collect().sort('Date')
+    
+    # Pivot to get separate columns for purchase and refinance
+    purchase_data = df_temp.filter(pl.col('loan_category') == 'Purchase').sort('Date')
+    refinance_data = df_temp.filter(pl.col('loan_category') == 'Refinance').sort('Date')
+    
+    plt.figure(figsize=(12, 6))
+    
+    if purchase_data.height > 0:
+        plt.plot(purchase_data['Date'], purchase_data['loan_count'], 
+                marker='o', linewidth=2, label='Purchase Loans')
+    
+    if refinance_data.height > 0:
+        plt.plot(refinance_data['Date'], refinance_data['loan_count'], 
+                marker='s', linewidth=2, label='Refinance Loans')
+    
+    plt.title('Purchase and Refinance Loans by Year')
+    plt.xlabel('Date')
+    plt.ylabel('Number of Loans')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'purchase_and_refinance_trend.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_down_payment_source_trend(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot the trend of borrower-funded loans over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating down payment source trend plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Down Payment Source', 'Date'])
+    df_temp = df_temp.with_columns(
+        pl.col('Date').count().over('Date').alias('LoanCount'),
+        (pl.col('Down Payment Source') == 'Borrower').sum().over('Date').alias('BorrowerFundedCount')
+    )
+    df_temp = df_temp.with_columns(
+        (pl.col('BorrowerFundedCount') / pl.col('LoanCount')).alias('BorrowerFundedShare')
+    )
+    df_temp = df_temp.select(['Date', 'BorrowerFundedShare']).unique()
+    df_temp = df_temp.collect().sort('Date')
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(df_temp['Date'], df_temp['BorrowerFundedShare'])
+    plt.title('Share of Borrower-Funded Down Payments Over Time')
+    plt.xlabel('Date')
+    plt.ylabel('Borrower-Funded Share')
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'down_payment_source_trend.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_interest_rate_by_product_type(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot average interest rates by product type over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating interest rate by product type plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Product Type', 'Interest Rate', 'Date'])
+    df_temp = df_temp.with_columns(
+        pl.col('Interest Rate').mean().over(['Date', 'Product Type']).alias('AverageRate')
+    )
+    df_temp = df_temp.select(['Date', 'Product Type', 'AverageRate']).unique()
+    df_temp = df_temp.collect().sort(['Date', 'Product Type'])
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot Fixed Rate
+    fixed_data = df_temp.filter(pl.col('Product Type').str.contains('Fix'))
+    if fixed_data.height > 0:
+        plt.plot(fixed_data['Date'], fixed_data['AverageRate'], 
+                color='blue', label='Fixed Rate', linewidth=2)
+    
+    # Plot Adjustable Rate
+    adj_data = df_temp.filter(pl.col('Product Type').str.contains('Adj'))
+    if adj_data.height > 0:
+        plt.plot(adj_data['Date'], adj_data['AverageRate'], 
+                color='red', label='Adjustable Rate', linewidth=2)
+    
+    plt.xlabel('Origination Date')
+    plt.ylabel('Monthly Average Rate')
+    plt.title('Average Interest Rates by Product Type')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'interest_rate_by_product_type.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_interest_rate_by_property_type(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot average interest rates by property type over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating interest rate by property type plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Property Type', 'Interest Rate', 'Date'])
+    df_temp = df_temp.with_columns(
+        pl.when(~pl.col('Property Type').str.contains('Single'))
+        .then(pl.lit('Non single family'))
+        .otherwise(pl.col('Property Type'))
+        .alias('Property Type')
+    )
+    df_temp = df_temp.with_columns(
+        pl.col('Interest Rate').mean().over(['Date', 'Property Type']).alias('AverageRate')
+    )
+    df_temp = df_temp.select(['Date', 'Property Type', 'AverageRate']).unique()
+    df_temp = df_temp.collect().sort(['Date', 'Property Type'])
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot Single Family
+    single_data = df_temp.filter(pl.col('Property Type').str.contains('Single'))
+    if single_data.height > 0:
+        plt.plot(single_data['Date'], single_data['AverageRate'], 
+                color='blue', label='Single family', linewidth=2)
+    
+    # Plot Non-Single Family
+    non_single_data = df_temp.filter(~pl.col('Property Type').str.contains('Single'))
+    if non_single_data.height > 0:
+        plt.plot(non_single_data['Date'], non_single_data['AverageRate'], 
+                color='red', label='Not single family', linewidth=2)
+    
+    plt.xlabel('Origination Date')
+    plt.ylabel('Monthly Average Rate')
+    plt.title('Average Interest Rates by Property Type')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'interest_rate_by_property_type.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_interest_rate_by_loan_purpose(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot average interest rates by loan purpose over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating interest rate by loan purpose plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Loan Purpose', 'Interest Rate', 'Date'])
+    df_temp = df_temp.with_columns(
+        pl.col('Interest Rate').mean().over(['Date', 'Loan Purpose']).alias('AverageRate')
+    )
+    df_temp = df_temp.select(['Date', 'Loan Purpose', 'AverageRate']).unique()
+    df_temp = df_temp.collect().sort(['Date', 'Loan Purpose'])
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot Purchase
+    purchase_data = df_temp.filter(pl.col('Loan Purpose').str.contains('Purchase'))
+    if purchase_data.height > 0:
+        plt.plot(purchase_data['Date'], purchase_data['AverageRate'], 
+                color='blue', label='Purchase', linewidth=2)
+    
+    # Plot FHA Refinance
+    fha_refi_data = df_temp.filter(pl.col('Loan Purpose').str.contains('FHA'))
+    if fha_refi_data.height > 0:
+        plt.plot(fha_refi_data['Date'], fha_refi_data['AverageRate'], 
+                color='red', label='Refinance (FHA)', linewidth=2)
+    
+    # Plot Conventional Refinance
+    conv_refi_data = df_temp.filter(pl.col('Loan Purpose').str.contains('Conv'))
+    if conv_refi_data.height > 0:
+        plt.plot(conv_refi_data['Date'], conv_refi_data['AverageRate'], 
+                color='green', label='Refinance (Conv)', linewidth=2)
+    
+    plt.xlabel('Origination Date')
+    plt.ylabel('Monthly Average Rate')
+    plt.title('Average Interest Rates by Loan Purpose')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'interest_rate_by_loan_purpose.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def plot_loan_amount_by_loan_purpose(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Plot average loan amounts by loan purpose over time.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plot
+    """
+    logger.info("Creating loan amount by loan purpose plot...")
+    
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(['Loan Purpose', 'Mortgage Amount', 'Date'])
+    df_temp = df_temp.with_columns(
+        pl.col('Mortgage Amount').mean().over(['Date', 'Loan Purpose']).alias('AverageSize')
+    )
+    df_temp = df_temp.select(['Date', 'Loan Purpose', 'AverageSize']).unique()
+    df_temp = df_temp.collect().sort(['Date', 'Loan Purpose'])
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot Purchase
+    purchase_data = df_temp.filter(pl.col('Loan Purpose').str.contains('Purchase'))
+    if purchase_data.height > 0:
+        plt.plot(purchase_data['Date'], purchase_data['AverageSize'], 
+                color='blue', label='Purchase', linewidth=2)
+    
+    # Plot FHA Refinance
+    fha_refi_data = df_temp.filter(pl.col('Loan Purpose').str.contains('FHA'))
+    if fha_refi_data.height > 0:
+        plt.plot(fha_refi_data['Date'], fha_refi_data['AverageSize'], 
+                color='red', label='Refinance (FHA)', linewidth=2)
+    
+    # Plot Conventional Refinance
+    conv_refi_data = df_temp.filter(pl.col('Loan Purpose').str.contains('Conv'))
+    if conv_refi_data.height > 0:
+        plt.plot(conv_refi_data['Date'], conv_refi_data['AverageSize'], 
+                color='green', label='Refinance (Conv)', linewidth=2)
+    
+    plt.xlabel('Origination Date')
+    plt.ylabel('Monthly Average Loan Amount')
+    plt.title('Average Loan Amounts by Loan Purpose')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'loan_amount_by_loan_purpose.png'
+    plt.savefig(output_path)
+    plt.close()
+    logger.info("Saved plot to %s", output_path)
+
+
+def create_all_trend_plots(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
+    """
+    Create all trend plots for FHA data analysis.
+    
+    Args:
+        data_path: Path to the hive-structured parquet directory
+        output_dir: Directory to save the plots
+    """
+    logger.info("Creating all trend plots...")
+    
+    # Ensure output directory exists
+    Path(output_dir).mkdir(exist_ok=True)
+    
+    # Create all plots
+    plot_active_lenders_over_time(data_path, output_dir)
+    plot_average_loan_size_over_time(data_path, output_dir)
+    plot_loan_purpose_distribution(data_path, output_dir)
+    plot_purchase_and_refinance_trend(data_path, output_dir)
+    plot_down_payment_source_trend(data_path, output_dir)
+    plot_interest_rate_by_product_type(data_path, output_dir)
+    plot_interest_rate_by_property_type(data_path, output_dir)
+    plot_interest_rate_by_loan_purpose(data_path, output_dir)
+    plot_loan_amount_by_loan_purpose(data_path, output_dir)
+    
+    logger.info("All trend plots created successfully")
+
+
+def main(log_level: str | int = "INFO", create_plots: bool = True, output_dir: Union[str, Path] = "output") -> None:
+    """
+    Run exploratory data analysis and optionally create visualizations.
+    
+    Args:
+        log_level: Logging level for the analysis
+        create_plots: Whether to create all trend plots
+        output_dir: Directory to save plots if create_plots is True
+    """
     configure_logging(log_level)
 
     # Load the data from hive structure
@@ -372,57 +785,13 @@ def main(log_level: str | int = "INFO") -> None:
     print_summary_statistics(sponsor_stats, "Sponsor Activity Analysis")
     print_summary_statistics(loan_stats, "Loan Characteristics Analysis")
     
-    # Create some visualizations
-    plt.style.use('seaborn-v0_8')
-    
-    # Plot 1: Active Lenders Over Time
-    fig, ax = plt.subplots(figsize=(12, 6))
-    yearly_lenders_df = lender_stats['yearly_lenders']
-    ax.plot(yearly_lenders_df['Year'], yearly_lenders_df['Active Lenders'], marker='o')
-    plt.title('Number of Active FHA Lenders by Year')
-    plt.xlabel('Year')
-    plt.ylabel('Number of Active Lenders')
-    plt.grid(True)
-    plt.savefig('output/active_lenders_trend.png')
-    plt.close()
-    
-    # Plot 2: Average Loan Size Over Time
-    fig, ax = plt.subplots(figsize=(12, 6))
-    yearly_loan_size_df = loan_stats['yearly_loan_size']
-    ax.plot(yearly_loan_size_df['Year'], yearly_loan_size_df['mean'], marker='o')
-    plt.title('Average FHA Loan Size by Year')
-    plt.xlabel('Year')
-    plt.ylabel('Average Loan Amount ($)')
-    plt.grid(True)
-    plt.savefig('output/avg_loan_size_trend.png')
-    plt.close()
-    
-    # Plot 3: Loan Purpose Distribution
-    fig, ax = plt.subplots(figsize=(10, 6))
-    loan_purpose_df = loan_stats['loan_purpose']
-    ax.bar(loan_purpose_df['Loan Purpose'], loan_purpose_df['count'])
-    plt.title('Distribution of FHA Loans by Purpose')
-    plt.ylabel('Number of Loans')
-    plt.xlabel('Loan Purpose')
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    plt.savefig('output/loan_purpose_dist.png')
-    plt.close()
-
-    # Plot 4: Refinance Share Over Time
-    # Stacked line chart of purchase and refinance loans by year
-    fig, ax = plt.subplots(figsize=(12, 6))
-    refinance_share_df = analyze_refinance_share(df)
-    refinance_share_df = refinance_share_df.sort('Date')
-    ax.plot(refinance_share_df['Date'], refinance_share_df['purchase_loan_count'], label='Purchase Loans')
-    ax.plot(refinance_share_df['Date'], refinance_share_df['refinance_loan_count'], label='Refinance Loans')
-    plt.title('Purchase and Refinance Loans by Year')
-    plt.xlabel('Date')
-    plt.ylabel('Number of Loans')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig('output/purchase_and_refinance_trend.png')
-    plt.close()
+    # Create visualizations if requested
+    if create_plots:
+        logger.info("Creating all trend plots...")
+        create_all_trend_plots(data_path, output_dir)
+        logger.info("Analysis and visualization complete!")
+    else:
+        logger.info("Analysis complete! Use create_all_trend_plots() to generate visualizations.")
 
 
 if __name__ == "__main__":
