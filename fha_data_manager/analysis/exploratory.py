@@ -302,6 +302,43 @@ def analyze_refinance_share(df: pl.DataFrame) -> pl.DataFrame:
     )
     return df
 
+
+def analyze_fixed_rate_share(df: pl.DataFrame) -> pl.DataFrame :
+    """
+    Analyze the share of fixed rate loans over time.
+
+    The output should be a DataFrame with the following columns:
+    - Date
+    - fixed_rate_count
+    - adjustable_rate_count
+    - adjustable_rate_share
+    - fixed_rate_average
+    - adjustable_rate_average
+    """
+
+    # Check for Date column and create it if it doesn't exist
+    if 'Date' not in df.columns:
+        df = df.with_columns(
+            pl.concat_str([
+                pl.col('Year').cast(pl.Utf8).str.zfill(4),
+                pl.col('Month').cast(pl.Utf8).str.zfill(2),
+            ], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
+        )
+
+    # Group by year and month and calculate the share of refinance loans
+    df = df.group_by(['Date']).agg(
+        pl.col('Product Type').fill_null('').str.to_lowercase().str.contains('fixed').sum().alias('fixed_rate_count'),
+        pl.col('Product Type').fill_null('').str.to_lowercase().str.contains('adjustable').sum().alias('adjustable_rate_count'),
+    )
+
+    # Compute average rates
+
+    df = df.with_columns(
+        (pl.col('adjustable_rate_count') / (pl.col('adjustable_rate_count') + pl.col('fixed_rate_count'))).alias('adjustable_rate_share'),
+    )
+    return df
+
+
 def print_summary_statistics(stats_dict: Dict[str, pl.DataFrame], section: str) -> None:
     """
     Print formatted summary statistics.
