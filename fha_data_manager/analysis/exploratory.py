@@ -594,6 +594,123 @@ def plot_interest_rate_by_product_type(
     logger.info("Saved Plotly plot to %s", output_path)
 
 
+def plot_top_lender_group_averages(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Plot average rates and loan sizes for top lenders versus all others."""
+
+    logger.info("Creating top lender comparison plots (Plotly)...")
+
+    lf = pl.scan_parquet(str(data_path))
+    available_columns = set(lf.columns)
+
+    required = {"Originating Mortgagee", "Mortgage Amount", "Interest Rate"}
+    missing = required - available_columns
+    if missing:
+        missing_cols = ", ".join(sorted(missing))
+        msg = f"Required columns missing from dataset: {missing_cols}"
+        raise ValueError(msg)
+
+    if {"Year", "Month"}.issubset(available_columns):
+        lf = lf.with_columns(
+            pl.concat_str(
+                [
+                    pl.col("Year").cast(pl.Utf8).str.zfill(4),
+                    pl.col("Month").cast(pl.Utf8).str.zfill(2),
+                ],
+                separator="-",
+            )
+            .str.to_datetime(format="%Y-%m", strict=False)
+            .alias("Date"),
+        )
+    elif "Date" in available_columns:
+        lf = lf.with_columns(pl.col("Date").cast(pl.Datetime).alias("Date"))
+    else:
+        msg = "Dataset must include either a Date column or Year and Month columns."
+        raise ValueError(msg)
+
+    lf = lf.select(
+        ["Date", "Originating Mortgagee", "Interest Rate", "Mortgage Amount"]
+    )
+
+    lender_groups = (
+        lf.group_by(["Date", "Originating Mortgagee"])
+        .agg(pl.len().alias("loan_count"))
+        .with_columns(
+            pl.col("loan_count")
+            .rank(method="ordinal", descending=True)
+            .over("Date")
+            .alias("lender_rank")
+        )
+        .with_columns(
+            pl.when(pl.col("lender_rank") <= 20)
+            .then(pl.lit("Top 20 Lenders"))
+            .otherwise(pl.lit("Other Lenders"))
+            .alias("lender_group")
+        )
+        .select(["Date", "Originating Mortgagee", "lender_group"])
+    )
+
+    joined = lf.join(lender_groups, on=["Date", "Originating Mortgagee"], how="left")
+
+    summary = (
+        joined.group_by(["Date", "lender_group"])
+        .agg(
+            [
+                pl.col("Interest Rate").mean().alias("avg_interest_rate"),
+                pl.col("Mortgage Amount").mean().alias("avg_loan_size"),
+            ]
+        )
+        .sort(["Date", "lender_group"])
+        .collect()
+    )
+
+    if summary.is_empty():
+        logger.warning("No data available to plot top lender comparisons (Plotly).")
+        return
+
+    pdf = summary.to_pandas()
+    pdf.sort_values("Date", inplace=True)
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    fig_rates = px.line(
+        pdf,
+        x="Date",
+        y="avg_interest_rate",
+        color="lender_group",
+        markers=True,
+        title="Average Interest Rate: Top 20 vs Other Lenders",
+    )
+    fig_rates.update_layout(
+        xaxis_title="Origination Date",
+        yaxis_title="Average Interest Rate",
+        legend_title="Lender Group",
+    )
+    rates_path = output_dir / "top_lender_interest_rate_comparison.html"
+    fig_rates.write_html(str(rates_path))
+
+    fig_sizes = px.line(
+        pdf,
+        x="Date",
+        y="avg_loan_size",
+        color="lender_group",
+        markers=True,
+        title="Average Loan Size: Top 20 vs Other Lenders",
+    )
+    fig_sizes.update_layout(
+        xaxis_title="Origination Date",
+        yaxis_title="Average Loan Size ($)",
+        legend_title="Lender Group",
+    )
+    sizes_path = output_dir / "top_lender_loan_size_comparison.html"
+    fig_sizes.write_html(str(sizes_path))
+
+    logger.info("Saved Plotly plots to %s and %s", rates_path, sizes_path)
+
+
 def plot_interest_rate_by_property_type(
     data_path: Union[str, Path],
     output_dir: Union[str, Path] = "output",
@@ -736,6 +853,7 @@ def create_all_trend_plots(
     plot_purchase_and_refinance_trend(data_path, output_dir)
     plot_down_payment_source_trend(data_path, output_dir)
     plot_interest_rate_by_product_type(data_path, output_dir)
+    plot_top_lender_group_averages(data_path, output_dir)
     plot_interest_rate_by_property_type(data_path, output_dir)
     plot_interest_rate_by_loan_purpose(data_path, output_dir)
     plot_loan_amount_by_loan_purpose(data_path, output_dir)
