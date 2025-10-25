@@ -23,11 +23,9 @@
 - [ ] Set up pre-commit hooks with `ruff` for linting and `black` for formatting to maintain consistent code style.
 - [ ] Add a `pyproject.toml` configuration for test coverage reporting with minimum coverage thresholds.
 - [ ] Create a `Makefile` or `justfile` with common development tasks (test, lint, format, build-docs, clean).
-- [ ] Add GitHub Actions or similar CI/CD workflows for automated testing, linting, and documentation building on pull requests.
 - [ ] Create a development setup script that installs dependencies, sets up pre-commit hooks, and verifies the environment.
 
 ## Performance & Scalability
-- [ ] Profile memory usage in `import_data.py` when processing large monthly files and optimize chunking strategies for files that exceed available RAM.
 - [x] Implement parallel processing for batch operations (e.g., processing multiple months concurrently during import) using `concurrent.futures` or `multiprocessing`.
 - [ ] Add support for incremental updates to the hive-structured database so users can append new months without reprocessing the entire dataset.
 - [ ] Optimize FIPS code matching in `add_county_fips()` by pre-building lookup tables instead of repeated string operations.
@@ -43,19 +41,16 @@
 ## User Interface & Accessibility
 - [ ] Create Jupyter notebook templates for common research tasks (lender analysis, geographic analysis, validation reports) in an `notebooks/` directory.
 - [ ] Build a simple web dashboard using `streamlit` or `panel` for interactive data exploration without coding.
-- [ ] Create summary statistics exports in publication-ready formats (LaTeX tables, formatted Excel with charts).
 - [ ] Build a CLI tool for quick data queries (e.g., `fha-data query --lender "Wells Fargo" --year 2020 --output results.csv`).
 
 ## Data Management
 - [ ] Implement a data versioning system to track which monthly files have been downloaded and processed, with checksum validation.
 - [ ] Create data archival utilities to compress and archive older monthly files while maintaining quick access to recent data.
 - [ ] Build a data catalog that documents all available variables, their data types, coverage periods, and any known quality issues.
-- [ ] Add support for data sampling utilities that create smaller representative subsets for development and testing.
 
 ## Package Distribution
 - [ ] Publish the package to PyPI to enable `pip install fha-data-manager` for easier distribution.
 - [ ] Create a Docker image with pre-configured environment and dependencies for reproducible research environments.
-- [ ] Add conda-forge distribution for users who prefer conda package management.
 - [ ] Build platform-specific wheels for faster installation on Windows, macOS, and Linux.
 - [ ] Create a "batteries-included" distribution that includes sample data for immediate experimentation.
 
