@@ -6,6 +6,7 @@ from typing import Dict, Literal, Union
 
 import matplotlib.pyplot as plt
 import polars as pl
+import plotly.express as px
 
 from fha_data_manager.utils.logging import configure_logging
 
@@ -384,6 +385,40 @@ def plot_active_lenders_over_time(data_path: Union[str, Path], output_dir: Union
     logger.info("Saved plot to %s", output_path)
 
 
+def plot_active_lenders_over_time_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of active lenders over time."""
+
+    logger.info("Creating active lenders over time plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Originating Mortgagee", "Year"])
+    df_temp = df_temp.group_by("Year").agg([
+        pl.col("Originating Mortgagee").n_unique().alias("Active Lenders")
+    ])
+    df_temp = df_temp.collect().sort("Year")
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot active lenders (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Year",
+        y="Active Lenders",
+        markers=True,
+        title="Number of Active FHA Lenders by Year",
+    )
+    fig.update_layout(xaxis_title="Year", yaxis_title="Number of Active Lenders")
+
+    output_path = Path(output_dir) / "active_lenders_trend_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
+
+
 def plot_average_loan_size_over_time(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
     """
     Plot the average FHA loan size over time.
@@ -418,6 +453,48 @@ def plot_average_loan_size_over_time(data_path: Union[str, Path], output_dir: Un
     logger.info("Saved plot to %s", output_path)
 
 
+def plot_average_loan_size_over_time_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of average loan size over time."""
+
+    logger.info("Creating average loan size over time plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Mortgage Amount", "Year"])
+    df_temp = df_temp.group_by("Year").agg([
+        pl.col("Mortgage Amount").mean().alias("mean"),
+        pl.col("Mortgage Amount").median().alias("median"),
+    ])
+    df_temp = df_temp.collect().sort("Year")
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot average loan size (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas().melt(
+        id_vars=["Year"],
+        value_vars=["mean", "median"],
+        var_name="Statistic",
+        value_name="Average Loan Amount",
+    )
+
+    fig = px.line(
+        pdf,
+        x="Year",
+        y="Average Loan Amount",
+        color="Statistic",
+        markers=True,
+        title="Average FHA Loan Size by Year",
+    )
+    fig.update_layout(xaxis_title="Year", yaxis_title="Average Loan Amount ($)")
+
+    output_path = Path(output_dir) / "avg_loan_size_trend_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
+
+
 def plot_loan_purpose_distribution(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
     """
     Plot the distribution of FHA loans by purpose.
@@ -447,6 +524,43 @@ def plot_loan_purpose_distribution(data_path: Union[str, Path], output_dir: Unio
     plt.savefig(output_path)
     plt.close()
     logger.info("Saved plot to %s", output_path)
+
+
+def plot_loan_purpose_distribution_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of the loan purpose distribution."""
+
+    logger.info("Creating loan purpose distribution plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Loan Purpose"])
+    df_temp = df_temp.group_by("Loan Purpose").agg([
+        pl.len().alias("count")
+    ])
+    df_temp = df_temp.collect().sort("count", descending=True)
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot loan purpose distribution (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.bar(
+        pdf,
+        x="Loan Purpose",
+        y="count",
+        title="Distribution of FHA Loans by Purpose",
+    )
+    fig.update_layout(
+        xaxis_title="Loan Purpose",
+        yaxis_title="Number of Loans",
+        xaxis_tickangle=-45,
+    )
+
+    output_path = Path(output_dir) / "loan_purpose_dist_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
 
 
 def plot_purchase_and_refinance_trend(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
@@ -499,6 +613,51 @@ def plot_purchase_and_refinance_trend(data_path: Union[str, Path], output_dir: U
     logger.info("Saved plot to %s", output_path)
 
 
+def plot_purchase_and_refinance_trend_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of purchase vs refinance trends."""
+
+    logger.info("Creating purchase and refinance trend plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Loan Purpose", "Date"])
+    df_temp = df_temp.with_columns([
+        pl.when(pl.col("Loan Purpose").str.contains("Purchase"))
+        .then(pl.lit("Purchase"))
+        .otherwise(pl.lit("Refinance"))
+        .alias("loan_category")
+    ])
+    df_temp = df_temp.group_by(["Date", "loan_category"]).agg([
+        pl.len().alias("loan_count")
+    ])
+    df_temp = df_temp.collect().sort("Date")
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot purchase vs refinance (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Date",
+        y="loan_count",
+        color="loan_category",
+        markers=True,
+        title="Purchase and Refinance Loans by Year",
+    )
+    fig.update_layout(
+        xaxis_title="Date",
+        yaxis_title="Number of Loans",
+        legend_title="Loan Category",
+    )
+
+    output_path = Path(output_dir) / "purchase_and_refinance_trend_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
+
+
 def plot_down_payment_source_trend(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
     """
     Plot the trend of borrower-funded loans over time.
@@ -533,6 +692,48 @@ def plot_down_payment_source_trend(data_path: Union[str, Path], output_dir: Unio
     plt.savefig(output_path)
     plt.close()
     logger.info("Saved plot to %s", output_path)
+
+
+def plot_down_payment_source_trend_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of the down payment source trend."""
+
+    logger.info("Creating down payment source trend plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Down Payment Source", "Date"])
+    df_temp = df_temp.with_columns(
+        pl.col("Date").count().over("Date").alias("LoanCount"),
+        (pl.col("Down Payment Source") == "Borrower").sum().over("Date").alias("BorrowerFundedCount"),
+    )
+    df_temp = df_temp.with_columns(
+        (pl.col("BorrowerFundedCount") / pl.col("LoanCount")).alias("BorrowerFundedShare")
+    )
+    df_temp = df_temp.select(["Date", "BorrowerFundedShare"]).unique()
+    df_temp = df_temp.collect().sort("Date")
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot down payment source (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Date",
+        y="BorrowerFundedShare",
+        markers=True,
+        title="Share of Borrower-Funded Down Payments Over Time",
+    )
+    fig.update_layout(
+        xaxis_title="Date",
+        yaxis_title="Borrower-Funded Share",
+    )
+
+    output_path = Path(output_dir) / "down_payment_source_trend_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
 
 
 def plot_interest_rate_by_product_type(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
@@ -578,6 +779,46 @@ def plot_interest_rate_by_product_type(data_path: Union[str, Path], output_dir: 
     plt.savefig(output_path)
     plt.close()
     logger.info("Saved plot to %s", output_path)
+
+
+def plot_interest_rate_by_product_type_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of interest rates by product type."""
+
+    logger.info("Creating interest rate by product type plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Product Type", "Interest Rate", "Date"])
+    df_temp = df_temp.with_columns(
+        pl.col("Interest Rate").mean().over(["Date", "Product Type"]).alias("AverageRate")
+    )
+    df_temp = df_temp.select(["Date", "Product Type", "AverageRate"]).unique()
+    df_temp = df_temp.collect().sort(["Date", "Product Type"])
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot interest rate by product type (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Date",
+        y="AverageRate",
+        color="Product Type",
+        title="Average Interest Rates by Product Type",
+    )
+    fig.update_traces(mode="lines+markers")
+    fig.update_layout(
+        xaxis_title="Origination Date",
+        yaxis_title="Monthly Average Rate",
+        legend_title="Product Type",
+    )
+
+    output_path = Path(output_dir) / "interest_rate_by_product_type_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
 
 
 def plot_interest_rate_by_property_type(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
@@ -631,6 +872,52 @@ def plot_interest_rate_by_property_type(data_path: Union[str, Path], output_dir:
     logger.info("Saved plot to %s", output_path)
 
 
+def plot_interest_rate_by_property_type_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of interest rates by property type."""
+
+    logger.info("Creating interest rate by property type plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Property Type", "Interest Rate", "Date"])
+    df_temp = df_temp.with_columns(
+        pl.when(~pl.col("Property Type").str.contains("Single"))
+        .then(pl.lit("Non single family"))
+        .otherwise(pl.col("Property Type"))
+        .alias("Property Type")
+    )
+    df_temp = df_temp.with_columns(
+        pl.col("Interest Rate").mean().over(["Date", "Property Type"]).alias("AverageRate")
+    )
+    df_temp = df_temp.select(["Date", "Property Type", "AverageRate"]).unique()
+    df_temp = df_temp.collect().sort(["Date", "Property Type"])
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot interest rate by property type (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Date",
+        y="AverageRate",
+        color="Property Type",
+        title="Average Interest Rates by Property Type",
+    )
+    fig.update_traces(mode="lines+markers")
+    fig.update_layout(
+        xaxis_title="Origination Date",
+        yaxis_title="Monthly Average Rate",
+        legend_title="Property Type",
+    )
+
+    output_path = Path(output_dir) / "interest_rate_by_property_type_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
+
+
 def plot_interest_rate_by_loan_purpose(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
     """
     Plot average interest rates by loan purpose over time.
@@ -680,6 +967,46 @@ def plot_interest_rate_by_loan_purpose(data_path: Union[str, Path], output_dir: 
     plt.savefig(output_path)
     plt.close()
     logger.info("Saved plot to %s", output_path)
+
+
+def plot_interest_rate_by_loan_purpose_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of interest rates by loan purpose."""
+
+    logger.info("Creating interest rate by loan purpose plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Loan Purpose", "Interest Rate", "Date"])
+    df_temp = df_temp.with_columns(
+        pl.col("Interest Rate").mean().over(["Date", "Loan Purpose"]).alias("AverageRate")
+    )
+    df_temp = df_temp.select(["Date", "Loan Purpose", "AverageRate"]).unique()
+    df_temp = df_temp.collect().sort(["Date", "Loan Purpose"])
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot interest rate by loan purpose (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Date",
+        y="AverageRate",
+        color="Loan Purpose",
+        title="Average Interest Rates by Loan Purpose",
+    )
+    fig.update_traces(mode="lines+markers")
+    fig.update_layout(
+        xaxis_title="Origination Date",
+        yaxis_title="Monthly Average Rate",
+        legend_title="Loan Purpose",
+    )
+
+    output_path = Path(output_dir) / "interest_rate_by_loan_purpose_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
 
 
 def plot_loan_amount_by_loan_purpose(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
@@ -733,6 +1060,46 @@ def plot_loan_amount_by_loan_purpose(data_path: Union[str, Path], output_dir: Un
     logger.info("Saved plot to %s", output_path)
 
 
+def plot_loan_amount_by_loan_purpose_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create an interactive Plotly version of loan amounts by purpose."""
+
+    logger.info("Creating loan amount by loan purpose plot (Plotly)...")
+
+    df_temp = pl.scan_parquet(str(data_path))
+    df_temp = df_temp.select(["Loan Purpose", "Mortgage Amount", "Date"])
+    df_temp = df_temp.with_columns(
+        pl.col("Mortgage Amount").mean().over(["Date", "Loan Purpose"]).alias("AverageSize")
+    )
+    df_temp = df_temp.select(["Date", "Loan Purpose", "AverageSize"]).unique()
+    df_temp = df_temp.collect().sort(["Date", "Loan Purpose"])
+
+    if df_temp.is_empty():
+        logger.warning("No data available to plot loan amount by purpose (Plotly).")
+        return
+
+    pdf = df_temp.to_pandas()
+    fig = px.line(
+        pdf,
+        x="Date",
+        y="AverageSize",
+        color="Loan Purpose",
+        title="Average Loan Amounts by Loan Purpose",
+    )
+    fig.update_traces(mode="lines+markers")
+    fig.update_layout(
+        xaxis_title="Origination Date",
+        yaxis_title="Monthly Average Loan Amount",
+        legend_title="Loan Purpose",
+    )
+
+    output_path = Path(output_dir) / "loan_amount_by_loan_purpose_plotly.html"
+    fig.write_html(str(output_path))
+    logger.info("Saved Plotly plot to %s", output_path)
+
+
 def create_all_trend_plots(data_path: Union[str, Path], output_dir: Union[str, Path] = "output") -> None:
     """
     Create all trend plots for FHA data analysis.
@@ -758,6 +1125,29 @@ def create_all_trend_plots(data_path: Union[str, Path], output_dir: Union[str, P
     plot_loan_amount_by_loan_purpose(data_path, output_dir)
     
     logger.info("All trend plots created successfully")
+
+
+def create_all_trend_plots_plotly(
+    data_path: Union[str, Path],
+    output_dir: Union[str, Path] = "output",
+) -> None:
+    """Create all Plotly-based trend plots for FHA data analysis."""
+
+    logger.info("Creating all Plotly trend plots...")
+
+    Path(output_dir).mkdir(exist_ok=True)
+
+    plot_active_lenders_over_time_plotly(data_path, output_dir)
+    plot_average_loan_size_over_time_plotly(data_path, output_dir)
+    plot_loan_purpose_distribution_plotly(data_path, output_dir)
+    plot_purchase_and_refinance_trend_plotly(data_path, output_dir)
+    plot_down_payment_source_trend_plotly(data_path, output_dir)
+    plot_interest_rate_by_product_type_plotly(data_path, output_dir)
+    plot_interest_rate_by_property_type_plotly(data_path, output_dir)
+    plot_interest_rate_by_loan_purpose_plotly(data_path, output_dir)
+    plot_loan_amount_by_loan_purpose_plotly(data_path, output_dir)
+
+    logger.info("All Plotly trend plots created successfully")
 
 
 def main(log_level: str | int = "INFO", create_plots: bool = True, output_dir: Union[str, Path] = "output") -> None:
