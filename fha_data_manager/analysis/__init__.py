@@ -14,7 +14,6 @@ from .network import (
     load_originator_sponsor_edges,
     project_affiliation_graphs,
 )
-from .browser import browse_data
 
 __all__ = [
     "load_combined_data",
@@ -27,6 +26,5 @@ __all__ = [
     "load_originator_sponsor_edges",
     "project_affiliation_graphs",
     "InstitutionAnalyzer",
-    "browse_data",
 ]
 
