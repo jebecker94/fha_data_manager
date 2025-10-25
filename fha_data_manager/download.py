@@ -46,6 +46,25 @@ def download_excel_files_from_url(
 
     Returns:
         ``None``. The function performs downloads for their side-effects only.
+
+    Examples:
+        Download the latest single-family spreadsheets directly into the raw
+        data directory while standardising filenames:
+
+        >>> from pathlib import Path
+        >>> url = "https://www.hud.gov/program_offices/housing/sfh/fha/sfdatasets"
+        >>> download_excel_files_from_url(url, Path("data/raw/single_family"), file_type="sf")
+
+        To also pull zip archives that occasionally bundle the workbooks,
+        enable ``include_zip`` and stretch out the courtesy pause for larger
+        transfers:
+
+        >>> download_excel_files_from_url(
+        ...     url,
+        ...     Path("data/raw/single_family"),
+        ...     pause_length=10,
+        ...     include_zip=True,
+        ... )
     """
 
     try:
