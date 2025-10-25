@@ -9,7 +9,6 @@ from fha_data_manager.analysis import (
     load_combined_data,
     analyze_lender_activity,
     analyze_sponsor_activity,
-    analyze_loan_characteristics,
     InstitutionAnalyzer,
 )
 
@@ -35,12 +34,6 @@ def run_exploratory_analysis() -> None:
     sponsor_stats = analyze_sponsor_activity(df)
     print("\nTop 10 Sponsors by Volume:")
     print(sponsor_stats['sponsor_volume'].head(10))
-    
-    # Analyze loan characteristics
-    print("\nAnalyzing loan characteristics...")
-    loan_stats = analyze_loan_characteristics(df)
-    print("\nLoan Purpose Distribution:")
-    print(loan_stats['loan_purpose'])
     
     print("\n✓ Exploratory analysis complete!")
     print("  Visualizations saved to output/ directory")

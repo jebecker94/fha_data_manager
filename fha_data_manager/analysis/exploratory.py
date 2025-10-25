@@ -3,8 +3,6 @@
 import logging
 from pathlib import Path
 from typing import Dict, Literal, Union
-
-import matplotlib.pyplot as plt
 import polars as pl
 import plotly.express as px
 
@@ -226,49 +224,6 @@ def analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
         .sort('Year')
     )
     results['yearly_sponsors'] = yearly_sponsors
-
-    return results
-
-
-def analyze_loan_characteristics(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
-    """
-    Analyze loan characteristics in the FHA single-family program.
-    
-    Args:
-        df: DataFrame with FHA single-family data
-    
-    Returns:
-        Dictionary of DataFrames with various loan metrics
-    """
-    results = {}
-    
-    # Loan purpose distribution
-    loan_purpose = (
-        df.group_by('Loan Purpose')
-        .agg(pl.count().alias('count'))
-        .sort('count', descending=True)
-    )
-    results['loan_purpose'] = loan_purpose
-
-    # Down payment source distribution
-    down_payment = (
-        df.group_by('Down Payment Source')
-        .agg(pl.count().alias('count'))
-        .sort('count', descending=True)
-    )
-    results['down_payment'] = down_payment
-
-    # Average loan size by year
-    yearly_loan_size = (
-        df.group_by('Year')
-        .agg([
-            pl.col('Mortgage Amount').mean().alias('mean'),
-            pl.col('Mortgage Amount').median().alias('median'),
-            pl.col('Mortgage Amount').std().alias('std')
-        ])
-        .sort('Year')
-    )
-    results['yearly_loan_size'] = yearly_loan_size
 
     return results
 
@@ -931,12 +886,10 @@ def main(log_level: str | int = "INFO", create_plots: bool = True, output_dir: U
     # Perform analyses
     lender_stats = analyze_lender_activity(df)
     sponsor_stats = analyze_sponsor_activity(df)
-    loan_stats = analyze_loan_characteristics(df)
     
     # Print results
     print_summary_statistics(lender_stats, "Lender Activity Analysis")
     print_summary_statistics(sponsor_stats, "Sponsor Activity Analysis")
-    print_summary_statistics(loan_stats, "Loan Characteristics Analysis")
     
     # Create visualizations if requested
     if create_plots:
