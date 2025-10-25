@@ -22,6 +22,7 @@ logs/
 
 # Image outputs
 *.png
+output/*.html
 
 *egg-info/
 
