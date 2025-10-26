@@ -15,6 +15,10 @@ from .exploratory import (
     plot_categorical_counts_over_time,
     create_all_trend_plots,
 )
+from .geo import (
+    create_county_loan_count_choropleth,
+    create_state_loan_count_choropleth,
+)
 from .institutions import InstitutionAnalyzer
 from .network import (
     analyze_sponsor_originator_network,
@@ -38,6 +42,8 @@ __all__ = [
     "plot_top_lender_group_averages",
     "plot_categorical_counts_over_time",
     "create_all_trend_plots",
+    "create_county_loan_count_choropleth",
+    "create_state_loan_count_choropleth",
     "analyze_sponsor_originator_network",
     "build_bipartite_graph",
     "compute_centrality_metrics",

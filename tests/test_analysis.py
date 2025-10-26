@@ -2,11 +2,16 @@
 
 import pytest
 import polars as pl
+import plotly.graph_objects as go
 from fha_data_manager.analysis import (
     load_combined_data,
     analyze_lender_activity,
     analyze_sponsor_activity,
     analyze_loan_characteristics,
+)
+from fha_data_manager.analysis.geo import (
+    create_county_loan_count_choropleth,
+    create_state_loan_count_choropleth,
 )
 from fha_data_manager.analysis.institutions import InstitutionAnalyzer
 
@@ -90,4 +95,30 @@ class TestInstitutionAnalyzer:
         assert 'unique_originator_names' in stats
         assert 'unique_originator_ids' in stats
         assert 'overlapping_names' in stats
+
+
+class TestGeoVisualizations:
+    """Test geographic visualization helpers."""
+
+    def test_create_state_loan_count_choropleth(self, sample_single_family_data):
+        """State choropleth should aggregate loan counts correctly."""
+
+        fig = create_state_loan_count_choropleth(sample_single_family_data)
+        assert isinstance(fig, go.Figure)
+        state_counts = dict(zip(fig.data[0].locations, fig.data[0].z))
+        assert state_counts["CA"] == 2
+        assert state_counts["TX"] == 1
+        assert fig.data[0].locationmode == "USA-states"
+
+    def test_create_county_loan_count_choropleth(self, sample_single_family_data):
+        """County choropleth should aggregate loan counts with FIPS codes."""
+
+        county_fips = [6037, 48201, 36061, 12086, 6073]
+        df = sample_single_family_data.with_columns(pl.Series("FIPS", county_fips))
+        fig = create_county_loan_count_choropleth(df)
+        assert isinstance(fig, go.Figure)
+        county_counts = dict(zip(fig.data[0].locations, fig.data[0].z))
+        assert county_counts["06037"] == 1
+        assert county_counts["06073"] == 1
+        assert county_counts["48201"] == 1
 

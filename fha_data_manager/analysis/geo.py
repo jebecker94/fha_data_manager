@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Literal
 
 import polars as pl
+import plotly.express as px
+import plotly.graph_objects as go
 
 Frequency = Literal["annual", "quarterly"]
 
@@ -111,6 +113,135 @@ def summarize_county_metrics(
             result.write_parquet(str(output_path / file_name))
 
     return result
+
+
+def _collect_frame(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """Collect the input into a :class:`polars.DataFrame` if it is lazy."""
+
+    return df.collect() if isinstance(df, pl.LazyFrame) else df
+
+
+def create_state_loan_count_choropleth(
+    df: pl.DataFrame | pl.LazyFrame,
+    *,
+    state_col: str = "Property State",
+    title: str | None = None,
+    color_scale: str = "Blues",
+) -> go.Figure:
+    """Create a Plotly choropleth map of loan counts by state.
+
+    Args:
+        df: FHA single-family dataset containing state information.
+        state_col: Column containing state abbreviations.
+        title: Optional title to apply to the resulting figure.
+        color_scale: Plotly continuous color scale name to use for the map.
+
+    Returns:
+        A :class:`plotly.graph_objects.Figure` representing the state-level
+        loan count map.
+    """
+
+    frame = _collect_frame(df)
+    if state_col not in frame.columns:
+        msg = f"Column '{state_col}' not found in dataframe."
+        raise ValueError(msg)
+
+    aggregated = (
+        frame.group_by(state_col)
+        .agg(pl.len().alias("loan_count"))
+        .with_columns(pl.col(state_col).cast(pl.Utf8).str.to_uppercase())
+        .sort(state_col)
+    )
+
+    pdf = aggregated.rename({state_col: "state"}).to_pandas()
+
+    fig = px.choropleth(
+        pdf,
+        locations="state",
+        locationmode="USA-states",
+        color="loan_count",
+        scope="usa",
+        color_continuous_scale=color_scale,
+        labels={"loan_count": "Loan Count"},
+        hover_data={"state": True, "loan_count": True},
+        title=title,
+    )
+    fig.update_geos(fitbounds="locations", visible=False)
+    return fig
+
+
+def create_county_loan_count_choropleth(
+    df: pl.DataFrame | pl.LazyFrame,
+    *,
+    fips_col: str = "FIPS",
+    state_col: str = "Property State",
+    county_col: str = "Property County",
+    title: str | None = None,
+    color_scale: str = "Blues",
+    geojson: dict | None = None,
+) -> go.Figure:
+    """Create a Plotly choropleth map of loan counts by county.
+
+    Args:
+        df: FHA single-family dataset containing county FIPS information.
+        fips_col: Column containing county-level FIPS codes.
+        state_col: Column containing state abbreviations for hover labels.
+        county_col: Column containing county names for hover labels.
+        title: Optional title to apply to the resulting figure.
+        color_scale: Plotly continuous color scale name to use for the map.
+        geojson: Optional GeoJSON mapping of U.S. counties. When ``None`` the
+            Plotly sample county GeoJSON is used.
+
+    Returns:
+        A :class:`plotly.graph_objects.Figure` representing the county-level
+        loan count map.
+    """
+
+    frame = _collect_frame(df)
+    missing_columns = [
+        col
+        for col in (fips_col, state_col, county_col)
+        if col not in frame.columns
+    ]
+    if missing_columns:
+        msg = f"Missing required columns for county choropleth: {missing_columns}"
+        raise ValueError(msg)
+
+    aggregated = (
+        frame.group_by(fips_col)
+        .agg(
+            [
+                pl.len().alias("loan_count"),
+                pl.col(state_col).first().alias(state_col),
+                pl.col(county_col).first().alias(county_col),
+            ]
+        )
+        .with_columns(
+            pl.col(fips_col)
+            .cast(pl.Utf8)
+            .str.strip()
+            .str.zfill(5)
+            .alias("fips")
+        )
+        .sort("fips")
+    )
+
+    pdf = aggregated.rename({state_col: "state", county_col: "county"}).to_pandas()
+
+    county_geojson = geojson or px.data.election_geojson()
+    fig = px.choropleth(
+        pdf,
+        geojson=county_geojson,
+        locations="fips",
+        color="loan_count",
+        scope="usa",
+        color_continuous_scale=color_scale,
+        labels={"loan_count": "Loan Count"},
+        hover_data={"county": True, "state": True, "loan_count": True},
+        title=title,
+    )
+    fig.update_geos(fitbounds="locations", visible=False)
+    return fig
 
 
 def summarize_metro_metrics(
