@@ -880,7 +880,7 @@ def main(log_level: str | int = "INFO", create_plots: bool = True, output_dir: U
     configure_logging(log_level)
 
     # Load the data from hive structure
-    data_path = Path("data/database/single_family")
+    data_path = Path("data/silver/single_family")
     df = load_combined_data(data_path)
     
     # Perform analyses

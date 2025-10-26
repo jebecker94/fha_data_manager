@@ -21,7 +21,7 @@ def run_exploratory_analysis() -> None:
     
     # Load data
     print("\nLoading data...")
-    df = load_combined_data("data/database/single_family")
+    df = load_combined_data("data/silver/single_family")
     
     # Analyze lender activity
     print("\nAnalyzing lender activity...")
@@ -47,7 +47,7 @@ def run_institution_analysis() -> None:
     
     # Initialize analyzer
     print("\nInitializing institution analyzer...")
-    analyzer = InstitutionAnalyzer("data/database/single_family")
+    analyzer = InstitutionAnalyzer("data/silver/single_family")
     analyzer.load_data()
     
     # Generate comprehensive report

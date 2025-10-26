@@ -17,7 +17,7 @@ def query_single_family_data() -> None:
     
     # Read Data
     print("\nLoading Single Family data from hive structure...")
-    df_sf = pl.scan_parquet("data/database/single_family", include_file_paths='FilePath')
+    df_sf = pl.scan_parquet("data/silver/single_family", include_file_paths='FilePath')
     
     # Query Data - Example: June 2025 data
     print("\nFiltering for Year=2025, Month=6...")
@@ -47,7 +47,7 @@ def query_hecm_data() -> None:
     
     # Read Data
     print("\nLoading HECM data from hive structure...")
-    df_hecm = pl.scan_parquet("data/database/hecm", include_file_paths='FilePath')
+    df_hecm = pl.scan_parquet("data/silver/hecm", include_file_paths='FilePath')
     
     # Query Data - Example: June 2025 data
     print("\nFiltering for Year=2025, Month=6...")

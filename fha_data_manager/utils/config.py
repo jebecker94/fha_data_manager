@@ -19,6 +19,8 @@ class Config:
     RAW_DIR: Path = Path(config('RAW_DIR', default=DATA_DIR / 'raw'))
     CLEAN_DIR: Path = Path(config('CLEAN_DIR', default=DATA_DIR / 'clean'))
     DATABASE_DIR: Path = Path(config('DATABASE_DIR', default=DATA_DIR / 'database'))
+    BRONZE_DIR: Path = Path(config('BRONZE_DIR', default=DATA_DIR / 'bronze'))
+    SILVER_DIR: Path = Path(config('SILVER_DIR', default=DATA_DIR / 'silver'))
     OUTPUT_DIR: Path = Path(config('OUTPUT_DIR', default=PROJECT_DIR / 'output'))
 
     @classmethod
@@ -30,6 +32,8 @@ class Config:
             cls.RAW_DIR,
             cls.CLEAN_DIR,
             cls.DATABASE_DIR,
+            cls.BRONZE_DIR,
+            cls.SILVER_DIR,
             cls.OUTPUT_DIR,
         )
         for dir_path in required_paths:
@@ -41,4 +45,6 @@ DATA_DIR: Path = Config.DATA_DIR
 RAW_DIR: Path = Config.RAW_DIR
 CLEAN_DIR: Path = Config.CLEAN_DIR
 DATABASE_DIR: Path = Config.DATABASE_DIR
+BRONZE_DIR: Path = Config.BRONZE_DIR
+SILVER_DIR: Path = Config.SILVER_DIR
 OUTPUT_DIR: Path = Config.OUTPUT_DIR

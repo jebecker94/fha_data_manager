@@ -16,7 +16,7 @@ def main() -> None:
     
     # Initialize validator
     print("\nInitializing validator...")
-    validator = FHADataValidator("data/database/single_family")
+    validator = FHADataValidator("data/silver/single_family")
     
     # Load data
     print("Loading data...")

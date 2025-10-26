@@ -579,8 +579,8 @@ def main():
     )
     parser.add_argument(
         "--data-path",
-        default="data/database/single_family",
-        help="Path to hive-structured data (default: data/database/single_family)"
+        default="data/silver/single_family",
+        help="Path to hive-structured data (default: data/silver/single_family)"
     )
     parser.add_argument(
         "--output-dir",

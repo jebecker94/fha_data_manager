@@ -24,8 +24,8 @@ def main() -> None:
     print("Import complete!")
     print("=" * 80)
     print("\nData has been saved to:")
-    print("  - data/database/single_family/")
-    print("  - data/database/hecm/")
+    print("  - data/silver/single_family/")
+    print("  - data/silver/hecm/")
     print("\nNext step: Run 03_load_and_query.py to explore the data")
 
 

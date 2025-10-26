@@ -47,8 +47,10 @@
 
 ## Where data live
 - Raw downloads: data/raw/single_family, data/raw/hecm
-- Cleaned monthly parquet: data/clean/single_family, data/clean/hecm
-- Hive-structured database: data/database/{single_family|hecm}/Year=YYYY/Month=M/*.parquet
+- Bronze (cleaned monthly parquet): data/bronze/single_family, data/bronze/hecm
+- Silver (hive-structured database): data/silver/{single_family|hecm}/Year=YYYY/Month=M/*.parquet
+
+Note: Legacy folders data/clean and data/database are kept for backward compatibility but will not be updated.
 
 ## Key scripts
 - download_fha_data.py: Downloads snapshots and standardizes filenames (fha_sf_snapshot_YYYYMM01.*, fha_hecm_snapshot_YYYYMM01.*)
@@ -60,20 +62,20 @@
 
 2) Clean monthly files and save to hive-structured database
    python import_fha_data.py
-   # Produces monthly parquet in data/clean/{single_family|hecm} and hive-structured database in data/database/
+   # Produces monthly parquet in data/bronze/{single_family|hecm} and hive-structured database in data/silver/
 
 ## Interacting with data (examples)
 - Read Single Family from hive-structured database
    import polars as pl
-   df = pl.scan_parquet('data/database/single_family')
+   df = pl.scan_parquet('data/silver/single_family')
 
 - Read HECM from hive-structured database
    import polars as pl
-   df = pl.scan_parquet('data/database/hecm')
+   df = pl.scan_parquet('data/silver/hecm')
 
 - Query with PyArrow
    from pyarrow import dataset as ds
-   tbl = ds.dataset('data/database/single_family', format='parquet')
+   tbl = ds.dataset('data/silver/single_family', format='parquet')
 
 ## Notes
 - Cleaners enforce schema with the dictionaries in mtgdicts.py.

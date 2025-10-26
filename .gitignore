@@ -14,6 +14,9 @@ data/raw/
 data/clean/
 data/clean/archived/
 data/database/
+data/bronze/
+data/silver/
+data/archived.zip
 
 # Logs
 logs/

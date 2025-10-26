@@ -31,7 +31,7 @@ def analyze_network_structure() -> None:
     # Load edges with minimum threshold to focus on meaningful relationships
     print("\nLoading sponsor-originator relationships...")
     edges = load_originator_sponsor_edges(
-        "data/database/single_family",
+        "data/silver/single_family",
         min_loans=5,  # Only include relationships with 5+ loans
         start_year=2020,  # Focus on recent data
     )
@@ -126,7 +126,7 @@ def run_comprehensive_network_analysis() -> None:
     
     print("\nRunning comprehensive analysis (this may take a moment)...")
     results = analyze_sponsor_originator_network(
-        "data/database/single_family",
+        "data/silver/single_family",
         start_year=2020,
         min_loans=3,
         weight_col="loan_count"
