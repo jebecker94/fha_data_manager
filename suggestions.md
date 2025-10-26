@@ -4,7 +4,6 @@
 - [x] Add comprehensive type hints throughout the codebase, particularly in `download.py`, `import_data.py`, and `mtgdicts.py`, to improve IDE support and catch type-related bugs early.
 - [ ] Implement consistent error handling patterns across modules with custom exception classes (e.g., `FHADataError`, `ValidationError`, `DownloadError`) for more informative error messages.
 - [ ] Add more docstring examples to complex functions, especially in `import_data.py` and `download.py`, showing typical usage patterns with small code snippets.
-- [ ] Refactor long functions in `import_data.py` (e.g., `convert_fha_sf_snapshots`, `convert_fha_hecm_snapshots`) by extracting repeated logic into smaller, testable helper functions.
 - [x] Add logging levels consistently across all modules (currently some modules use logging better than others) to aid in debugging data processing issues.
 
 ## Testing & Quality Assurance
