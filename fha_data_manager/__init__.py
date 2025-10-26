@@ -21,7 +21,6 @@ from .import_cli import (
 from .import_data import (
     add_county_fips,
     clean_hecm_sheets,
-    clean_sf_sheets,
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
     create_lender_id_to_name_crosswalk,
@@ -48,7 +47,6 @@ __all__ = [
     # Import/cleaning functionality
     "add_county_fips",
     "clean_hecm_sheets",
-    "clean_sf_sheets",
     "convert_fha_hecm_snapshots",
     "convert_fha_sf_snapshots",
     "create_lender_id_to_name_crosswalk",

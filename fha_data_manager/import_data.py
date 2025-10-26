@@ -17,6 +17,8 @@ import pandas as pd
 import polars as pl
 from .utils.mtgdicts import FHADictionary
 
+import fastexcel
+
 PathLike: TypeAlias = Path | str
 SnapshotType: TypeAlias = Literal['single_family', 'hecm']
 
@@ -294,171 +296,7 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: PathLike) -> pl.DataFr
 
     return enriched
 
-
-# Single-Family
-def clean_sf_sheets(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean excel sheets for FHA single-family data.
-    """
-
-    # Rename Columns to Standardize
-    rename_dict: dict[str, str] = {
-        'Endorsement Month': 'Month',
-        'Original Mortgage Amount': 'Mortgage Amount',
-        'Origination Mortgagee/Sponsor Originator': 'Originating Mortgagee',
-        'Origination Mortgagee Sponsor Or': 'Originating Mortgagee',
-        'Orig Num': 'Originating Mortgagee Number',
-        'Property/Product Type': 'Property Type',
-        'Property Type Final': 'Property Type',
-        'Sponosr Number': 'Sponsor Number',
-        'Sponsor Num': 'Sponsor Number',
-        'Endorsement  Year': 'Year',
-        'Endorsment Year': 'Year',
-        'Endorsement Year': 'Year',
-    }
-    df.columns = [x.replace('_', ' ').strip() for x in df.columns]
-    df = df.rename(columns=rename_dict, errors='ignore')
-
-    # Drop Unnamed Columns
-    unnamed_columns = [x for x in df.columns if 'Unnamed' in x]
-    df = df.drop(columns=unnamed_columns)
-
-    # Convert Columns to Numeric
-    numeric_columns: list[str] = [
-        'Property Zip',
-        'Originating Mortgagee Number',
-        'Sponsor Number',
-        'Non Profit Number',
-        'Interest Rate',
-        'Mortgage Amount',
-        'Year',
-        'Month',
-    ]
-    for column in numeric_columns:
-        if column in df.columns:
-            df[column] = pd.to_numeric(df[column], errors='coerce')
-    
-    # Drop Bad Observations (Only One I Know)
-    drop_index = df[df['Loan Purpose'] == 'Loan_Purpose'].index
-    df = df.drop(drop_index)
-
-    # Replace Bad Loan Purposes for 2016
-    df.loc[df['Loan Purpose'].isin(['Fixed Rate', 'Adjustable Rate']), 'Loan Purpose'] = 'Purchase'
-    df.loc[df['Loan Purpose'].isin(['Rehabilitation', 'Single Family']), 'Loan Purpose'] = 'Purchase'
-
-    # Standardize Down Payment Types
-    df.loc[df['Down Payment Source'] == 'NonProfit', 'Down Payment Source'] = 'Non Profit'
-    
-    # Replace empty strings, all spaces, and "nan" in Down Payment Source with None
-    if 'Down Payment Source' in df.columns:
-        df.loc[df['Down Payment Source'].astype(str).str.strip() == '', 'Down Payment Source'] = None
-        df.loc[df['Down Payment Source'] == 'nan', 'Down Payment Source'] = None
-
-    # Replace Loan Purpose Types
-    df['Loan Purpose'] = [x.replace('-', '_') for x in df['Loan Purpose']]
-
-    # Fix County Names and Sponsor Names
-    df.loc[df['Property County'] == '#NULL!', 'Property County'] = None
-    df.loc[df['Sponsor Name'] == 'Not Available', 'Sponsor Name'] = None
-
-    # Convert Columns
-    fhad = FHADictionary()
-    data_types = fhad.single_family.data_types
-    for column, dtype in data_types.items():
-        if column in df.columns:
-            df[column] = df[column].astype(dtype)
-
-    # Return DataFrame
-    return df
-
-
-def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
-    """
-    Convert raw single-family snapshots to cleaned parquet files.
-
-    Parameters
-    ----------
-    data_folder : pathlib.Path
-        Directory containing the raw Excel monthly SF snapshots.
-    save_folder : pathlib.Path
-        Directory where cleaned parquet snapshots are saved.
-    overwrite : boolean, optional
-        Whether to overwrite output files if a version already exists.
-        The default is False.
-
-    Returns
-    -------
-    None.
-
-    Examples
-    --------
-    Convert an extracted batch of spreadsheets into parquet files ready for
-    downstream processing:
-
-    >>> from pathlib import Path
-    >>> raw_sf = Path("data/raw/single_family")
-    >>> clean_sf = Path("data/clean/single_family")
-    >>> convert_fha_sf_snapshots(raw_sf, clean_sf)
-
-    To force regeneration of previously processed months, pass
-    ``overwrite=True``:
-
-    >>> convert_fha_sf_snapshots(raw_sf, clean_sf, overwrite=True)
-
-    """
-
-    save_folder.mkdir(parents=True, exist_ok=True)
-
-    tasks: list[_SnapshotConversionTask] = []
-
-    # Read Data File-by-File
-    for year in range(2010, 2099) :
-        for mon in range(1, 13) :
-            files = sorted(data_folder.glob(f'fha_sf_snapshot_{year}{mon:02d}01*.xls*'))
-            if not files:
-                continue
-
-            input_file = files[0]
-            output_file = save_folder / f'fha_sf_snapshot_{year}{mon:02d}01.parquet'
-
-            if output_file.exists() and not overwrite:
-                logger.info('File %s already exists!', output_file)
-                continue
-
-            tasks.append(
-                _SnapshotConversionTask(
-                    input_file=input_file,
-                    output_file=output_file,
-                    year=year,
-                    month=mon,
-                )
-            )
-
-    _run_parallel_conversions(tasks, _convert_single_family_snapshot)
-
-
-def _convert_single_family_snapshot(task: _SnapshotConversionTask) -> None:
-    """Worker function for converting a single-family monthly snapshot."""
-
-    logger.info('Reading and Converting File: %s', task.input_file)
-
-    xls = pd.ExcelFile(task.input_file)
-    sheets = xls.sheet_names
-    sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x]
-    df_sheets: dict[str, pd.DataFrame] = {}
-    if sheets:
-        df_sheets = pd.read_excel(task.input_file, sheets)
-
-    frames = [clean_sf_sheets(df_s) for df_s in df_sheets.values()]
-    if not frames:
-        return
-
-    df = pd.concat(frames)
-    df['FHA_Index'] = [f'{task.year}{task.month:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
-    df.to_parquet(task.output_file, index=False)
-
-
-# HECM
+# HECM (Pandas-based)
 def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean HECM sheets.
@@ -617,9 +455,9 @@ def _convert_hecm_snapshot(task: _SnapshotConversionTask) -> None:
         logger.error('Error saving file %s: %s', task.output_file, exc)
 
 
-# Polars-based cleaning and conversion functions
+#%% Polars-based cleaning and conversion functions
 
-def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
+def clean_sf_sheets(df: pl.DataFrame) -> pl.DataFrame:
     """
     Clean Excel sheets for FHA single-family data using Polars.
     
@@ -634,7 +472,13 @@ def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
         Cleaned single-family data.
     """
     
-    # Rename Columns to Standardize
+    # Initial column name cleaning:
+    # 1. Strip whitespace from column names
+    # 2. Replace underscores with spaces in column names
+    df = df.rename(lambda col: col.strip() if isinstance(col, str) else col)
+    df = df.rename(lambda col: col.replace('_', ' ') if isinstance(col, str) else col)
+    
+    # Rename Columns to Standardize - only rename columns that exist
     rename_dict: dict[str, str] = {
         'Endorsement Month': 'Month',
         'Original Mortgage Amount': 'Mortgage Amount',
@@ -649,12 +493,11 @@ def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
         'Endorsment Year': 'Year',
         'Endorsement Year': 'Year',
     }
-    
-    # Standardize column names
-    df = df.rename(rename_dict)
-    
+    rename_dict_filtered = {old: new for old, new in rename_dict.items() if old in df.columns}
+    df = df.rename(rename_dict_filtered)
+
     # Drop unnamed columns
-    unnamed_cols = [col for col in df.columns if 'Unnamed' in col]
+    unnamed_cols = [col for col in df.columns if 'unnamed' in col.lower()]
     if unnamed_cols:
         df = df.drop(unnamed_cols)
     
@@ -677,35 +520,32 @@ def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
             )
     
     # Drop bad observations
-    df = df.filter(pl.col('Loan Purpose') != 'Loan_Purpose')
+    if 'Loan Purpose' in df.columns:
+        df = df.filter(pl.col('Loan Purpose') != 'Loan_Purpose')
     
     # Replace bad loan purposes for 2016
-    df = df.with_columns(
-        pl.when(pl.col('Loan Purpose').is_in(['Fixed Rate', 'Adjustable Rate']))
-        .then(pl.lit('Purchase'))
-        .otherwise(pl.col('Loan Purpose'))
-        .alias('Loan Purpose')
-    )
-    
-    df = df.with_columns(
-        pl.when(pl.col('Loan Purpose').is_in(['Rehabilitation', 'Single Family']))
-        .then(pl.lit('Purchase'))
-        .otherwise(pl.col('Loan Purpose'))
-        .alias('Loan Purpose')
-    )
+    if 'Loan Purpose' in df.columns:
+        df = df.with_columns(
+            pl.when(pl.col('Loan Purpose').is_in(['Fixed Rate', 'Adjustable Rate']))
+            .then(pl.lit('Purchase'))
+            .when(pl.col('Loan Purpose').is_in(['Rehabilitation', 'Single Family']))
+            .then(pl.lit('Purchase'))
+            .otherwise(pl.col('Loan Purpose'))
+            .alias('Loan Purpose')
+        )
+
+        # Replace '-' with '_' in Loan Purpose
+        # Note: Replaces Refi_Conv-Curr with Refi_Conv_Curr
+        df = df.with_columns(
+            pl.col('Loan Purpose').str.replace('-', '_').alias('Loan Purpose')
+        )
     
     # Standardize down payment types
-    df = df.with_columns(
-        pl.when(pl.col('Down Payment Source') == 'NonProfit')
-        .then(pl.lit('Non Profit'))
-        .otherwise(pl.col('Down Payment Source'))
-        .alias('Down Payment Source')
-    )
-    
-    # Replace empty strings, all spaces, and "nan" in Down Payment Source with None
     if 'Down Payment Source' in df.columns:
         df = df.with_columns(
-            pl.when(
+            pl.when(pl.col('Down Payment Source') == 'NonProfit')
+            .then(pl.lit('Non Profit'))
+            .when(
                 (pl.col('Down Payment Source').cast(pl.Utf8).str.strip_chars() == '') |
                 (pl.col('Down Payment Source') == 'nan')
             )
@@ -715,24 +555,27 @@ def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
         )
     
     # Replace loan purpose types
-    df = df.with_columns(
-        pl.col('Loan Purpose').str.replace('-', '_').alias('Loan Purpose')
-    )
+    if 'Loan Purpose' in df.columns:
+        df = df.with_columns(
+            pl.col('Loan Purpose').str.replace('-', '_').alias('Loan Purpose')
+        )
     
     # Fix county names and sponsor names
-    df = df.with_columns(
-        pl.when(pl.col('Property County') == '#NULL!')
-        .then(None)
-        .otherwise(pl.col('Property County'))
-        .alias('Property County')
-    )
+    if 'Property County' in df.columns:
+        df = df.with_columns(
+            pl.when(pl.col('Property County') == '#NULL!')
+            .then(None)
+            .otherwise(pl.col('Property County'))
+            .alias('Property County')
+        )
     
-    df = df.with_columns(
-        pl.when(pl.col('Sponsor Name') == 'Not Available')
-        .then(None)
-        .otherwise(pl.col('Sponsor Name'))
-        .alias('Sponsor Name')
-    )
+    if 'Sponsor Name' in df.columns:
+        df = df.with_columns(
+            pl.when(pl.col('Sponsor Name') == 'Not Available')
+            .then(None)
+            .otherwise(pl.col('Sponsor Name'))
+            .alias('Sponsor Name')
+        )
     
     # Convert to appropriate data types based on schema
     fhad = FHADictionary()
@@ -743,11 +586,11 @@ def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
             # Map string dtypes to polars types
             if dtype == 'str':
                 df = df.with_columns(pl.col(column).cast(pl.Utf8))
-            elif dtype == 'int32':
+            elif dtype == 'Int32':
                 df = df.with_columns(pl.col(column).cast(pl.Int32))
-            elif dtype == 'int64':
+            elif dtype == 'Int64':
                 df = df.with_columns(pl.col(column).cast(pl.Int64))
-            elif dtype == 'int16':
+            elif dtype == 'Int16':
                 df = df.with_columns(pl.col(column).cast(pl.Int16))
             elif dtype == 'float64':
                 df = df.with_columns(pl.col(column).cast(pl.Float64))
@@ -755,10 +598,10 @@ def clean_sf_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
-def convert_fha_sf_snapshots_polars(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
+def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
     """
     Convert raw single-family snapshots to cleaned parquet files using Polars.
-    
+
     Parameters
     ----------
     data_folder : pathlib.Path
@@ -768,29 +611,29 @@ def convert_fha_sf_snapshots_polars(data_folder: Path, save_folder: Path, overwr
     overwrite : boolean, optional
         Whether to overwrite output files if a version already exists.
         The default is False.
-    
+
     Returns
     -------
     None.
     """
     save_folder.mkdir(parents=True, exist_ok=True)
-    
+
     tasks: list[_SnapshotConversionTask] = []
-    
+
     # Read data file-by-file
     for year in range(2010, 2099):
         for mon in range(1, 13):
             files = sorted(data_folder.glob(f'fha_sf_snapshot_{year}{mon:02d}01*.xls*'))
             if not files:
                 continue
-            
+
             input_file = files[0]
             output_file = save_folder / f'fha_sf_snapshot_{year}{mon:02d}01.parquet'
-            
+
             if output_file.exists() and not overwrite:
                 logger.info('File %s already exists!', output_file)
                 continue
-            
+
             tasks.append(
                 _SnapshotConversionTask(
                     input_file=input_file,
@@ -799,19 +642,22 @@ def convert_fha_sf_snapshots_polars(data_folder: Path, save_folder: Path, overwr
                     month=mon,
                 )
             )
+
+    logger.info(f'Found {len(tasks)} files to process')
+    if tasks:
+        logger.info(f'First file: {tasks[0].input_file}, output: {tasks[0].output_file}')
     
-    _run_parallel_conversions(tasks, _convert_single_family_snapshot_polars)
+    _run_parallel_conversions(tasks, _convert_single_family_snapshot)
 
 
-def _convert_single_family_snapshot_polars(task: _SnapshotConversionTask) -> None:
+def _convert_single_family_snapshot(task: _SnapshotConversionTask) -> None:
     """Worker function for converting a single-family monthly snapshot using Polars."""
-    
+
     logger.info('Reading and Converting File: %s', task.input_file)
-    
+
     try:
-        # Read Excel using pandas for now (fastexcel API needs more research)
-        xls = pd.ExcelFile(task.input_file)
-        sheets = xls.sheet_names
+        reader = fastexcel.read_excel(task.input_file)
+        sheets = reader.sheet_names
         sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x]
         
         if not sheets:
@@ -822,9 +668,8 @@ def _convert_single_family_snapshot_polars(task: _SnapshotConversionTask) -> Non
         frames = []
         for sheet in sheets:
             try:
-                df_pd = pd.read_excel(task.input_file, sheet_name=sheet)
-                df = pl.from_pandas(df_pd)
-                df = clean_sf_sheets_polars(df)
+                df = reader.load_sheet(sheet).to_polars()
+                df = clean_sf_sheets(df)
                 frames.append(df)
             except Exception as exc:
                 logger.warning("Error reading sheet %s from %s: %s", sheet, task.input_file, exc)
@@ -833,9 +678,9 @@ def _convert_single_family_snapshot_polars(task: _SnapshotConversionTask) -> Non
         if not frames:
             logger.warning("No valid sheets could be read from %s", task.input_file)
             return
-        
+
         # Concatenate all sheets
-        df = pl.concat(frames)
+        df = pl.concat(frames, how='diagonal_relaxed')
         
         # Add FHA_Index
         df = df.with_columns(
@@ -857,18 +702,18 @@ def _convert_single_family_snapshot_polars(task: _SnapshotConversionTask) -> Non
 def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
     """
     Clean HECM sheets using Polars.
-    
+
     Parameters
     ----------
     df : polars DataFrame
         Raw HECM data.
-    
+
     Returns
     -------
     pl.DataFrame
         Cleaned HECM data.
     """
-    
+
     # Rename columns
     rename_dict: dict[str, str] = {
         'NMLS*': 'NMLS',
@@ -884,11 +729,11 @@ def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
         'Originating Mortgagee Sponsor Originator': 'Originating Mortgagee',
         'Originating Mortgagee Sponsor Or': 'Originating Mortgagee',
         'Sponsored Originator': 'Sponsor Originator',
-    }
+    }   
     
     # Standardize column names
     df = df.rename(rename_dict)
-    
+
     # Replace "Not Available" and null values with None
     for col in df.columns:
         df = df.with_columns(
@@ -925,7 +770,7 @@ def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
             df = df.with_columns(
                 pl.col(col).cast(pl.Float64, strict=False)
             )
-    
+
     # Convert to appropriate data types based on schema
     fhad = FHADictionary()
     data_types = fhad.hecm.data_types
@@ -943,14 +788,14 @@ def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
                 df = df.with_columns(pl.col(column).cast(pl.Int16))
             elif dtype == 'float64':
                 df = df.with_columns(pl.col(column).cast(pl.Float64))
-    
+
     return df
 
 
 def convert_fha_hecm_snapshots_polars(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
     """
     Convert raw HECM snapshots to cleaned parquet files using Polars.
-    
+
     Parameters
     ----------
     data_folder : pathlib.Path
@@ -960,29 +805,29 @@ def convert_fha_hecm_snapshots_polars(data_folder: Path, save_folder: Path, over
     overwrite : boolean, optional
         Whether to overwrite output files if a version already exists.
         The default is False.
-    
+
     Returns
     -------
     None.
     """
     save_folder.mkdir(parents=True, exist_ok=True)
-    
+
     tasks: list[_SnapshotConversionTask] = []
-    
+
     # Read data file-by-file
     for year in range(2010, 2099):
         for mon in range(1, 13):
             files = sorted(data_folder.glob(f'fha_hecm_snapshot_{year}{mon:02d}01*.xls*'))
             if not files:
                 continue
-            
+
             input_file = files[0]
             output_file = save_folder / f'fha_hecm_snapshot_{year}{mon:02d}01.parquet'
-            
+
             if output_file.exists() and not overwrite:
                 logger.info('File %s already exists!', output_file)
                 continue
-            
+
             tasks.append(
                 _SnapshotConversionTask(
                     input_file=input_file,
@@ -991,25 +836,25 @@ def convert_fha_hecm_snapshots_polars(data_folder: Path, save_folder: Path, over
                     month=mon,
                 )
             )
-    
+
     _run_parallel_conversions(tasks, _convert_hecm_snapshot_polars)
 
 
 def _convert_hecm_snapshot_polars(task: _SnapshotConversionTask) -> None:
     """Worker function for converting a HECM monthly snapshot using Polars."""
-    
+
     logger.info('Reading and Converting File: %s', task.input_file)
-    
+
     try:
         # Read Excel using pandas for now (fastexcel API needs more research)
         xls = pd.ExcelFile(task.input_file)
         sheets = xls.sheet_names
         sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
-        
+
         if not sheets:
             logger.warning("No relevant sheets found in %s", task.input_file)
             return
-        
+
         # Read each sheet, convert to polars, and clean it
         frames = []
         for sheet in sheets:

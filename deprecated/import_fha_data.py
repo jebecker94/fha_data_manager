@@ -20,7 +20,6 @@ from fha_data_manager.utils.logging import configure_logging
 from fha_data_manager.import_data import (
     add_county_fips,
     clean_hecm_sheets,
-    clean_sf_sheets,
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
     create_lender_id_to_name_crosswalk,
@@ -35,10 +34,9 @@ __all__ = [
     "standardize_county_names",
     "add_county_fips",
     "create_lender_id_to_name_crosswalk",
-    "clean_sf_sheets",
-    "convert_fha_sf_snapshots",
     "clean_hecm_sheets",
     "convert_fha_hecm_snapshots",
+    "convert_fha_sf_snapshots",
     "save_clean_snapshots_to_db",
 ]
 
@@ -61,8 +59,8 @@ if __name__ == '__main__' :
     ## Single Family
     # Convert Snapshots
     convert_fha_sf_snapshots(
-        raw_dir / 'single_family', 
-        bronze_dir / 'single_family', 
+        data_folder=raw_dir / 'single_family', 
+        save_folder=bronze_dir / 'single_family', 
         overwrite=False,
     )
 
