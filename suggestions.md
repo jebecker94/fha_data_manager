@@ -34,7 +34,6 @@
 - [ ] Create a data quality dashboard that visualizes validation results over time to track data quality trends across monthly releases.
 - [ ] Add automated anomaly detection for monthly data releases (e.g., sudden drops in loan counts, unusual geographic distributions, interest rate outliers).
 - [ ] Implement schema versioning to track changes in FHA data column names and types over time, with automatic migration utilities.
-- [ ] Build a reconciliation tool that compares aggregate statistics between raw and cleaned data to catch processing errors.
 - [ ] Add validation rules specific to temporal consistency (e.g., checking for implausible month-over-month changes in institution activity).
 
 ## User Interface & Accessibility
@@ -60,9 +59,7 @@
 
 ## New Analysis Capabilities
 - [ ] Implement market concentration metrics (Herfindahl-Hirschman Index) at national, state, and county levels to study lender competition over time.
-- [ ] Add time-series decomposition utilities for analyzing seasonality and trends in FHA lending activity.
 - [ ] Create cohort analysis tools to track lender entry/exit patterns and survival rates over time.
-- [ ] Build spatial analysis capabilities using geographic clustering (e.g., hot spot analysis) to identify regional lending patterns.
 
 ## Research Features
 - [x] Build a lender-level panel dataset within `fha_data_manager/analysis/` that extends `fha_data_manager.analysis.exploratory.analyze_lender_activity` by aggregating loan counts, total volume, average interest rates, and purchase-versus-refinance shares at annual or quarterly frequency, and export the result for econometric modeling (e.g., market share and Herfindahl analyses).
