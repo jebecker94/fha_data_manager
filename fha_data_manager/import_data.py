@@ -16,6 +16,27 @@ import pandas as pd
 import polars as pl
 from .utils.mtgdicts import FHADictionary
 
+
+_SINGLE_FAMILY_CATEGORICAL_VALUES: dict[str, tuple[str, ...]] = {
+    "Loan Purpose": ("Purchase", "Refi_FHA", "Refi_Conv_Curr"),
+    "Property Type": (
+        "Single Family",
+        "Condo",
+        "Rehabilitation",
+        "H4H",
+        "Other",
+    ),
+    "Product Type": ("Fixed Rate", "Adjustable Rate"),
+    "Down Payment Source": (
+        "Borrower",
+        "Relative",
+        "Gov Asst",
+        "Non Profit",
+        "Employer",
+        "null",
+    ),
+}
+
 import fastexcel
 
 PathLike: TypeAlias = Path | str
@@ -196,6 +217,33 @@ def add_county_fips(
     df = df.join(county_map, on=[state_col, county_col], how="left")
 
     # Return DataFrame
+    return df
+
+
+def _apply_single_family_categoricals(df: pl.LazyFrame) -> pl.LazyFrame:
+    """Cast key single-family variables to categorical dtypes.
+
+    The allowed category values are sourced from ``CATEGORICAL.md`` and
+    represented in :data:`_SINGLE_FAMILY_CATEGORICAL_VALUES`.
+    """
+
+    casts: list[pl.Expr] = []
+    schema = df.schema
+
+    for column, values in _SINGLE_FAMILY_CATEGORICAL_VALUES.items():
+        if column not in schema:
+            continue
+        casts.append(
+            pl.col(column)
+            .cast(pl.Utf8, strict=False)
+            .cast(pl.Categorical)
+            .cat.set_categories(list(values))
+            .alias(column)
+        )
+
+    if casts:
+        df = df.with_columns(casts)
+
     return df
 
 
@@ -840,6 +888,9 @@ def save_clean_snapshots_to_db(
 
     # Drop Null Rows in Year and Month
     df = df.drop_nulls(subset=['Year', 'Month'])
+
+    if file_type == 'single_family':
+        df = _apply_single_family_categoricals(df)
 
     # Sink
     df.sink_parquet(
