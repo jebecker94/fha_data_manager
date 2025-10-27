@@ -10,6 +10,7 @@ This directory contains example scripts demonstrating the complete workflow for 
 4. **Validate** - Validate data quality
 5. **Analyze** - Perform exploratory and institutional analysis
 6. **Network Analysis** - Analyze sponsor-originator relationship networks
+7. **Geographic Analysis** - Create choropleth maps showing loan counts by state and county
 
 ## Quick Start
 
@@ -33,6 +34,9 @@ python examples/05_analyze_data.py
 
 # 6. Network analysis
 python examples/06_network_analysis.py
+
+# 7. Geographic analysis with maps
+python examples/07_geographic_analysis.py
 ```
 
 ## Example Scripts
@@ -54,6 +58,10 @@ Performs exploratory and institutional analysis on the data.
 
 ### 06_network_analysis.py
 Analyzes sponsor-originator relationship networks using graph theory and centrality metrics.
+
+### 07_geographic_analysis.py
+Creates choropleth maps showing FHA loan counts at the state and county levels, 
+generating both overall and year-by-year visualizations.
 
 ## Notes
 

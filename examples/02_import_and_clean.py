@@ -18,7 +18,7 @@ def main() -> None:
     import_single_family_snapshots()
     
     print("\n2. Importing HECM snapshots...")
-    import_hecm_snapshots()
+    # import_hecm_snapshots()
     
     print("\n" + "=" * 80)
     print("Import complete!")

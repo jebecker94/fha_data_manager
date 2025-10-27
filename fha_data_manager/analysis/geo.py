@@ -126,7 +126,7 @@ def create_state_loan_count_choropleth(
     *,
     state_col: str = "Property State",
     title: str | None = None,
-    color_scale: str = "Blues",
+    color_scale: str | list = 'Viridis',
 ) -> go.Figure:
     """Create a Plotly choropleth map of loan counts by state.
 
@@ -134,7 +134,8 @@ def create_state_loan_count_choropleth(
         df: FHA single-family dataset containing state information.
         state_col: Column containing state abbreviations.
         title: Optional title to apply to the resulting figure.
-        color_scale: Plotly continuous color scale name to use for the map.
+        color_scale: Plotly continuous color scale name or custom color list.
+            Defaults to a red-to-green gradient.
 
     Returns:
         A :class:`plotly.graph_objects.Figure` representing the state-level
@@ -154,7 +155,10 @@ def create_state_loan_count_choropleth(
     )
 
     pdf = aggregated.rename({state_col: "state"}).to_pandas()
-
+    
+    # Ensure loan_count is numeric (int or float) for continuous color scale
+    pdf["loan_count"] = pdf["loan_count"].astype(float)
+    
     fig = px.choropleth(
         pdf,
         locations="state",
@@ -166,7 +170,8 @@ def create_state_loan_count_choropleth(
         hover_data={"state": True, "loan_count": True},
         title=title,
     )
-    fig.update_geos(fitbounds="locations", visible=False)
+    fig.update_coloraxes(colorbar_title="Loan Count")
+    
     return fig
 
 
@@ -177,7 +182,7 @@ def create_county_loan_count_choropleth(
     state_col: str = "Property State",
     county_col: str = "Property County",
     title: str | None = None,
-    color_scale: str = "Blues",
+    color_scale: str | list = 'Viridis',
     geojson: dict | None = None,
 ) -> go.Figure:
     """Create a Plotly choropleth map of loan counts by county.
@@ -188,7 +193,8 @@ def create_county_loan_count_choropleth(
         state_col: Column containing state abbreviations for hover labels.
         county_col: Column containing county names for hover labels.
         title: Optional title to apply to the resulting figure.
-        color_scale: Plotly continuous color scale name to use for the map.
+        color_scale: Plotly continuous color scale name or custom color list.
+            Defaults to a red-to-green gradient.
         geojson: Optional GeoJSON mapping of U.S. counties. When ``None`` the
             Plotly sample county GeoJSON is used.
 
@@ -219,7 +225,7 @@ def create_county_loan_count_choropleth(
         .with_columns(
             pl.col(fips_col)
             .cast(pl.Utf8)
-            .str.strip()
+            .str.strip_chars()
             .str.zfill(5)
             .alias("fips")
         )
@@ -227,12 +233,16 @@ def create_county_loan_count_choropleth(
     )
 
     pdf = aggregated.rename({state_col: "state", county_col: "county"}).to_pandas()
+    
+    # Ensure loan_count is numeric (int or float) for continuous color scale
+    pdf["loan_count"] = pdf["loan_count"].astype(float)
 
-    county_geojson = geojson or px.data.election_geojson()
+    county_geojson = geojson
     fig = px.choropleth(
         pdf,
         geojson=county_geojson,
         locations="fips",
+        featureidkey="id",
         color="loan_count",
         scope="usa",
         color_continuous_scale=color_scale,
@@ -240,7 +250,8 @@ def create_county_loan_count_choropleth(
         hover_data={"county": True, "state": True, "loan_count": True},
         title=title,
     )
-    fig.update_geos(fitbounds="locations", visible=False)
+    fig.update_coloraxes(colorbar_title="Loan Count")
+    
     return fig
 
 

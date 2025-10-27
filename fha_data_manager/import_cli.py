@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from fha_data_manager.utils.config import CLEAN_DIR, DATA_DIR, RAW_DIR
+from fha_data_manager.utils.config import BRONZE_DIR, DATA_DIR, RAW_DIR, SILVER_DIR
 from fha_data_manager.import_data import (
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
@@ -25,30 +25,30 @@ class _ImportDefaults:
     """Container for defaults shared by snapshot import subcommands."""
 
     raw_dir: Path
-    clean_dir: Path
-    database_dir: Path
+    bronze_dir: Path
+    silver_dir: Path
     file_type: SnapshotType
 
 
 _SINGLE_FAMILY_DEFAULTS = _ImportDefaults(
     raw_dir=RAW_DIR / "single_family",
-    clean_dir=CLEAN_DIR / "single_family",
-    database_dir=DATA_DIR / "database" / "single_family",
+    bronze_dir=BRONZE_DIR / "single_family",
+    silver_dir=SILVER_DIR / "single_family",
     file_type="single_family",
 )
 
 _HECM_DEFAULTS = _ImportDefaults(
     raw_dir=RAW_DIR / "hecm",
-    clean_dir=CLEAN_DIR / "hecm",
-    database_dir=DATA_DIR / "database" / "hecm",
+    bronze_dir=BRONZE_DIR / "hecm",
+    silver_dir=SILVER_DIR / "hecm",
     file_type="hecm",
 )
 
 
 def import_single_family_snapshots(
     raw_dir: Path | str = _SINGLE_FAMILY_DEFAULTS.raw_dir,
-    clean_dir: Path | str = _SINGLE_FAMILY_DEFAULTS.clean_dir,
-    database_dir: Path | str = _SINGLE_FAMILY_DEFAULTS.database_dir,
+    bronze_dir: Path | str = _SINGLE_FAMILY_DEFAULTS.bronze_dir,
+    silver_dir: Path | str = _SINGLE_FAMILY_DEFAULTS.silver_dir,
     *,
     overwrite: bool = False,
     min_year: int = DEFAULT_MIN_YEAR,
@@ -60,8 +60,8 @@ def import_single_family_snapshots(
 
     _run_import_pipeline(
         raw_dir=Path(raw_dir),
-        clean_dir=Path(clean_dir),
-        database_dir=Path(database_dir),
+        bronze_dir=Path(bronze_dir),
+        silver_dir=Path(silver_dir),
         file_type="single_family",
         overwrite=overwrite,
         min_year=min_year,
@@ -73,8 +73,8 @@ def import_single_family_snapshots(
 
 def import_hecm_snapshots(
     raw_dir: Path | str = _HECM_DEFAULTS.raw_dir,
-    clean_dir: Path | str = _HECM_DEFAULTS.clean_dir,
-    database_dir: Path | str = _HECM_DEFAULTS.database_dir,
+    bronze_dir: Path | str = _HECM_DEFAULTS.bronze_dir,
+    silver_dir: Path | str = _HECM_DEFAULTS.silver_dir,
     *,
     overwrite: bool = False,
     min_year: int = DEFAULT_MIN_YEAR,
@@ -86,8 +86,8 @@ def import_hecm_snapshots(
 
     _run_import_pipeline(
         raw_dir=Path(raw_dir),
-        clean_dir=Path(clean_dir),
-        database_dir=Path(database_dir),
+        bronze_dir=Path(bronze_dir),
+        silver_dir=Path(silver_dir),
         file_type="hecm",
         overwrite=overwrite,
         min_year=min_year,
@@ -100,8 +100,8 @@ def import_hecm_snapshots(
 def _run_import_pipeline(
     *,
     raw_dir: Path,
-    clean_dir: Path,
-    database_dir: Path,
+    bronze_dir: Path,
+    silver_dir: Path,
     file_type: SnapshotType,
     overwrite: bool,
     min_year: int,
@@ -112,20 +112,20 @@ def _run_import_pipeline(
     """Execute the two-step import process shared across snapshot types."""
 
     raw_dir = raw_dir.expanduser()
-    clean_dir = clean_dir.expanduser()
-    database_dir = database_dir.expanduser()
+    bronze_dir = bronze_dir.expanduser()
+    silver_dir = silver_dir.expanduser()
 
-    clean_dir.mkdir(parents=True, exist_ok=True)
-    database_dir.mkdir(parents=True, exist_ok=True)
+    bronze_dir.mkdir(parents=True, exist_ok=True)
+    silver_dir.mkdir(parents=True, exist_ok=True)
 
     if file_type == "single_family":
-        convert_fha_sf_snapshots(raw_dir, clean_dir, overwrite=overwrite)
+        convert_fha_sf_snapshots(raw_dir, bronze_dir, overwrite=overwrite)
     else:
-        convert_fha_hecm_snapshots(raw_dir, clean_dir, overwrite=overwrite)
+        convert_fha_hecm_snapshots(raw_dir, bronze_dir, overwrite=overwrite)
 
     save_clean_snapshots_to_db(
-        clean_dir,
-        database_dir,
+        bronze_dir,
+        silver_dir,
         min_year=min_year,
         max_year=max_year,
         file_type=file_type,
@@ -162,18 +162,18 @@ def _configure_import_subparser(
         ),
     )
     subparser.add_argument(
-        "--clean-dir",
+        "--bronze-dir",
         type=Path,
-        default=defaults.clean_dir,
+        default=defaults.bronze_dir,
         help=(
             "Directory where cleaned parquet snapshots are written. "
             "Defaults to %(default)s."
         ),
     )
     subparser.add_argument(
-        "--database-dir",
+        "--silver-dir",
         type=Path,
-        default=defaults.database_dir,
+        default=defaults.silver_dir,
         help=(
             "Destination directory for the hive-structured database. "
             "Defaults to %(default)s."
@@ -265,13 +265,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--min-year cannot be greater than --max-year")
 
     raw_dir = Path(args.raw_dir)
-    clean_dir = Path(args.clean_dir)
-    database_dir = Path(args.database_dir)
+    bronze_dir = Path(args.bronze_dir)
+    silver_dir = Path(args.silver_dir)
 
     args.handler(
         raw_dir=raw_dir,
-        clean_dir=clean_dir,
-        database_dir=database_dir,
+        bronze_dir=bronze_dir,
+        silver_dir=silver_dir,
         overwrite=args.overwrite,
         min_year=min_year,
         max_year=max_year,
