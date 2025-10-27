@@ -296,166 +296,6 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: PathLike) -> pl.DataFr
 
     return enriched
 
-# HECM (Pandas-based)
-def clean_hecm_sheets(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean HECM sheets.
-
-    Parameters
-    ----------
-    df : pandas DataFrame
-        Raw HECM data.
-
-    Returns
-    -------
-    df : pandas DataFrame
-        Cleaned HECM data.
-
-    """
-
-    # Rename Columns
-    rename_dict: dict[str, str] = {
-        'NMLS*': 'NMLS',
-        'Sponosr Number': 'Sponsor Number',
-        'Standard Saver': 'Standard/Saver',
-        'Purchase /Refinance': 'Purchase/Refinance',
-        'Purchase Refinance': 'Purchase/Refinance',
-        'Previous Servicer': 'Previous Servicer ID',
-        'Endorsement Year': 'Year',
-        'Endorsement Month': 'Month',
-        'Hecm Type': 'HECM Type',
-        'Originating Mortgagee/Sponsor Originator': 'Originating Mortgagee',
-        'Originating Mortgagee Sponsor Originator': 'Originating Mortgagee',
-        'Originating Mortgagee Sponsor Or': 'Originating Mortgagee',
-        'Sponsored Originator': 'Sponsor Originator',
-    }   
-    
-    df.columns = [x.replace('_', ' ').strip() for x in df.columns]
-    df = df.rename(columns=rename_dict, errors='ignore')
-
-    # Replace Not Available and Replace np.nan Columns with NoneTypes
-    for col in df.columns:
-        df.loc[df[col] == 'Not Available', col] = None
-        df.loc[pd.isna(df[col]), col] = None
-
-    # Convert Columns
-    numeric_cols: list[str] = [
-        'Property Zip',
-        'Originating Mortgagee Number',
-        'Sponsor Number',
-        'NMLS',
-        'Interest Rate',
-        'Initial Principal Limit',
-        'Maximum Claim Amount',
-        'Year',
-        'Month',
-        'Current Servicer ID',
-        'Previous Servicer ID',
-    ]
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    # Convert Columns
-    fhad = FHADictionary()
-    data_types = fhad.hecm.data_types
-    for column, dtype in data_types.items():
-        if column in df.columns:
-            df[column] = df[column].astype(dtype)
-
-    return df
-
-
-def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
-    """
-    Converts and cleans monthly HECM snapshots, standardizing variable names
-    across files.
-    Note: Currently, only cleans years >2011. Early years have formatting
-    issues that make cleaning difficult.
-
-    Parameters
-    ----------
-    data_folder : pathlib.Path
-        Directory containing the raw Excel monthly HECM snapshots.
-    save_folder : pathlib.Path
-        Directory where cleaned parquet HECM snapshots are saved.
-    overwrite : boolean, optional
-        Whether to overwrite output files if a version already exists.
-        The default is False.
-
-    Returns
-    -------
-    None.
-
-    Examples
-    --------
-    >>> from pathlib import Path
-    >>> raw_hecm = Path("data/raw/hecm")
-    >>> clean_hecm = Path("data/clean/hecm")
-    >>> convert_fha_hecm_snapshots(raw_hecm, clean_hecm)
-
-    Use the ``overwrite`` flag to reprocess files after updating the cleaning
-    logic:
-
-    >>> convert_fha_hecm_snapshots(raw_hecm, clean_hecm, overwrite=True)
-
-    """
-
-    save_folder.mkdir(parents=True, exist_ok=True)
-
-    tasks: list[_SnapshotConversionTask] = []
-
-    # Read Data File-by-File
-    for year in range(2010, 2099) :
-        for mon in range(1, 13) :
-            files = sorted(data_folder.glob(f'fha_hecm_snapshot_{year}{mon:02d}01*.xls*'))
-            if not files:
-                continue
-
-            input_file = files[0]
-            output_file = save_folder / f'fha_hecm_snapshot_{year}{mon:02d}01.parquet'
-
-            if output_file.exists() and not overwrite:
-                logger.info('File %s already exists!', output_file)
-                continue
-
-            tasks.append(
-                _SnapshotConversionTask(
-                    input_file=input_file,
-                    output_file=output_file,
-                    year=year,
-                    month=mon,
-                )
-            )
-
-    _run_parallel_conversions(tasks, _convert_hecm_snapshot)
-
-
-def _convert_hecm_snapshot(task: _SnapshotConversionTask) -> None:
-    """Worker function for converting a HECM monthly snapshot."""
-
-    logger.info('Reading and Converting File: %s', task.input_file)
-
-    xls = pd.ExcelFile(task.input_file)
-    sheets = xls.sheet_names
-    sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
-    df_sheets: dict[str, pd.DataFrame] = {}
-    if sheets:
-        df_sheets = pd.read_excel(task.input_file, sheets)
-
-    frames = [clean_hecm_sheets(df_s) for df_s in df_sheets.values()]
-    if not frames:
-        return
-
-    df = pd.concat(frames)
-    df['FHA_Index'] = [f'H{task.year}{task.month:02d}01_{x:07d}' for x in np.arange(df.shape[0])]
-    try:
-        df.to_parquet(task.output_file, index=False)
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.error('Error saving file %s: %s', task.output_file, exc)
-
-
-#%% Polars-based cleaning and conversion functions
 
 def clean_sf_sheets(df: pl.DataFrame) -> pl.DataFrame:
     """
@@ -699,7 +539,7 @@ def _convert_single_family_snapshot(task: _SnapshotConversionTask) -> None:
         logger.error('Error converting file %s: %s', task.input_file, exc)
 
 
-def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
+def clean_hecm_sheets(df: pl.DataFrame) -> pl.DataFrame:
     """
     Clean HECM sheets using Polars.
 
@@ -729,23 +569,29 @@ def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
         'Originating Mortgagee Sponsor Originator': 'Originating Mortgagee',
         'Originating Mortgagee Sponsor Or': 'Originating Mortgagee',
         'Sponsored Originator': 'Sponsor Originator',
-    }   
-    
-    # Standardize column names
-    df = df.rename(rename_dict)
+    }
+    rename_dict_filtered = {old: new for old, new in rename_dict.items() if old in df.columns}
+    df = df.rename(rename_dict_filtered)
 
+    # Drop unnamed columns
+    unnamed_cols = [col for col in df.columns if 'unnamed' in col.lower()]
+    if unnamed_cols:
+        df = df.drop(unnamed_cols)
+    
     # Replace "Not Available" and null values with None
     for col in df.columns:
-        df = df.with_columns(
-            pl.when(pl.col(col) == 'Not Available')
-            .then(None)
-            .otherwise(pl.col(col))
-            .alias(col)
-        )
+        # if string column, replace 'Not Available' and null values with None
+        if df.schema[col] in [pl.Utf8, pl.Categorical, pl.String]:
+            df = df.with_columns(
+                pl.when(pl.col(col).is_in(['Not Available', 'nan', 'None']))
+                .then(pl.lit(None))
+                .otherwise(pl.col(col))
+                .alias(col)
+            )
         
         df = df.with_columns(
             pl.when(pl.col(col).is_null())
-            .then(None)
+            .then(pl.lit(None))
             .otherwise(pl.col(col))
             .alias(col)
         )
@@ -780,11 +626,11 @@ def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
             # Map string dtypes to polars types
             if dtype == 'str':
                 df = df.with_columns(pl.col(column).cast(pl.Utf8))
-            elif dtype == 'int32':
+            elif dtype == 'Int32':
                 df = df.with_columns(pl.col(column).cast(pl.Int32))
-            elif dtype == 'int64':
+            elif dtype == 'Int64':
                 df = df.with_columns(pl.col(column).cast(pl.Int64))
-            elif dtype == 'int16':
+            elif dtype == 'Int16':
                 df = df.with_columns(pl.col(column).cast(pl.Int16))
             elif dtype == 'float64':
                 df = df.with_columns(pl.col(column).cast(pl.Float64))
@@ -792,7 +638,7 @@ def clean_hecm_sheets_polars(df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
-def convert_fha_hecm_snapshots_polars(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
+def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: bool = False) -> None:
     """
     Convert raw HECM snapshots to cleaned parquet files using Polars.
 
@@ -837,18 +683,17 @@ def convert_fha_hecm_snapshots_polars(data_folder: Path, save_folder: Path, over
                 )
             )
 
-    _run_parallel_conversions(tasks, _convert_hecm_snapshot_polars)
+    _run_parallel_conversions(tasks, _convert_hecm_snapshot)
 
 
-def _convert_hecm_snapshot_polars(task: _SnapshotConversionTask) -> None:
+def _convert_hecm_snapshot(task: _SnapshotConversionTask) -> None:
     """Worker function for converting a HECM monthly snapshot using Polars."""
 
     logger.info('Reading and Converting File: %s', task.input_file)
 
     try:
-        # Read Excel using pandas for now (fastexcel API needs more research)
-        xls = pd.ExcelFile(task.input_file)
-        sheets = xls.sheet_names
+        reader = fastexcel.read_excel(task.input_file)
+        sheets = reader.sheet_names
         sheets = [x for x in sheets if "Data" in x or "Purchase" in x or "Refinance" in x or "data" in x]
 
         if not sheets:
@@ -859,9 +704,8 @@ def _convert_hecm_snapshot_polars(task: _SnapshotConversionTask) -> None:
         frames = []
         for sheet in sheets:
             try:
-                df_pd = pd.read_excel(task.input_file, sheet_name=sheet)
-                df = pl.from_pandas(df_pd)
-                df = clean_hecm_sheets_polars(df)
+                df = reader.load_sheet(sheet).to_polars()
+                df = clean_hecm_sheets(df)
                 frames.append(df)
             except Exception as exc:
                 logger.warning("Error reading sheet %s from %s: %s", sheet, task.input_file, exc)
