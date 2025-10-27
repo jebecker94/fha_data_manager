@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Callable, Literal, TypeAlias
 
 import addfips
-import numpy as np
 import pandas as pd
 import polars as pl
 from .utils.mtgdicts import FHADictionary
