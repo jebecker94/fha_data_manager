@@ -16,6 +16,7 @@ import pandas as pd
 import polars as pl
 from .utils.mtgdicts import FHADictionary
 
+import fastexcel
 
 _SINGLE_FAMILY_CATEGORICAL_VALUES: dict[str, tuple[str, ...]] = {
     "Loan Purpose": ("Purchase", "Refi_FHA", "Refi_Conv_Curr"),
@@ -33,11 +34,8 @@ _SINGLE_FAMILY_CATEGORICAL_VALUES: dict[str, tuple[str, ...]] = {
         "Gov Asst",
         "Non Profit",
         "Employer",
-        "null",
     ),
 }
-
-import fastexcel
 
 PathLike: TypeAlias = Path | str
 SnapshotType: TypeAlias = Literal['single_family', 'hecm']

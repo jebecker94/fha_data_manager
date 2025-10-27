@@ -58,3 +58,17 @@ By default the inventory is saved to ``data/data_inventory.csv`` and includes fi
 and timestamp metadata for easy review. Adjust the destination by configuring the
 ``DATA_DIR`` setting via environment variables (see ``config.py``) if you would like the
 inventory saved elsewhere.
+
+# Possible future extensions
+
+This project is designed to work with minimal use of external resources. However, it would be valuable to integrate the FHA data with external sources like lender IDs (HMDA, FRB, etc.). Below are some suggestions for future extensions that I am open to exploring in collaboration with others.
+
+## Data Enrichment
+- Add support for joining with county-to-XXX crosswalk files (available from Census/HUD)
+    - Merge in HUD area median income (AMI) data
+    - Merge in FHFA house price index (HPI) data
+- Create crosswalks between FHA lenders and other institution IDs:
+    - Build a crosswalk between FHA lender IDs and RSSD IDs to link with regulatory data
+    - Merge in institution-type variables (i.e., banks, non-banks, credit unions)
+- Create utilities to merge FHA data with HMDA data for enhanced lender and borrower characteristics
+    - NOTE: This is almost fully finished for the post-2018 HMDA data, and it will be released shortly
