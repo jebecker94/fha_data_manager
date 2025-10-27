@@ -223,8 +223,7 @@ def add_county_fips(
 def _apply_single_family_categoricals(df: pl.LazyFrame) -> pl.LazyFrame:
     """Cast key single-family variables to categorical dtypes.
 
-    The allowed category values are sourced from ``CATEGORICAL.md`` and
-    represented in :data:`_SINGLE_FAMILY_CATEGORICAL_VALUES`.
+    The allowed category values are represented in :data:`_SINGLE_FAMILY_CATEGORICAL_VALUES`.
     """
 
     casts: list[pl.Expr] = []
@@ -237,7 +236,6 @@ def _apply_single_family_categoricals(df: pl.LazyFrame) -> pl.LazyFrame:
             pl.col(column)
             .cast(pl.Utf8, strict=False)
             .cast(pl.Categorical)
-            .cat.set_categories(list(values))
             .alias(column)
         )
 

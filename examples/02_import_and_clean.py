@@ -15,11 +15,11 @@ def main() -> None:
     print("=" * 80)
     
     print("\n1. Importing Single Family snapshots...")
-    # import_single_family_snapshots()
-    
+    import_single_family_snapshots()
+
     print("\n2. Importing HECM snapshots...")
     import_hecm_snapshots()
-    
+
     print("\n" + "=" * 80)
     print("Import complete!")
     print("=" * 80)

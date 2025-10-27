@@ -31,4 +31,5 @@ output/*.html
 
 # Temp files
 examples/temp_browse_sf_data.py
+examples/temp_browse_hecm_data.py
 deprecated/
