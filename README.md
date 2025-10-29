@@ -29,6 +29,38 @@ When processing the data, we perform the following data standardization steps:
 ## Notes on Lender Names
 Extensive exploration suggests that the originating mortgagee and sponsor IDs and names are consistent across file types (single family and HECM), loan purpose (purchase and refinance sheets), and time. The mapping between IDs and names is not one-to-one; rather, when an institution experiences a name change or merger/acquisition event, the name might change while the ID remains in use. For instance, Quicken -> Quicken, LLC -> Rocket Mortgage. As some experimental script show, these name changes are predictable overall--very few cases where a name changes and then changes back.
 
+## Track Your Local Data Inventory
+Use the ``log_data_inventory.py`` script to create a CSV snapshot of the raw and clean
+files you currently have stored in the project.
+
+```
+python log_data_inventory.py
+```
+
+By default the inventory is saved to ``data/data_inventory.csv`` and includes file size
+and timestamp metadata for easy review. Adjust the destination by configuring the
+``DATA_DIR`` setting via environment variables (see ``config.py``) if you would like the
+inventory saved elsewhere.
+
+## Saving data to HuggingFace
+The final result of the single family data cleaning operations will be saved to HuggingFace datasets for public use.
+
+The link can be found on the HuggingFace Hub here: [LINK]
+
+# Possible future extensions
+
+This project is designed to work with minimal use of external resources. However, it would be valuable to integrate the FHA data with external sources like lender IDs (HMDA, FRB, etc.). Below are some suggestions for future extensions that I am open to exploring in collaboration with others.
+
+## Data Enrichment
+- Add support for joining with county-to-XXX crosswalk files (available from Census/HUD)
+    - Merge in HUD area median income (AMI) data
+    - Merge in FHFA house price index (HPI) data
+- Create crosswalks between FHA lenders and other institution IDs:
+    - Build a crosswalk between FHA lender IDs and RSSD IDs to link with regulatory data
+    - Merge in institution-type variables (i.e., banks, non-banks, credit unions)
+- Create utilities to merge FHA data with HMDA data for enhanced lender and borrower characteristics
+    - NOTE: This is almost fully finished for the post-2018 HMDA data, and it will be released shortly
+
 ## Note on matching with other datasets
 - Matching with HMDA (public)
     * To perform a match between the FHA single-family mortgage data and the HMDA loan-level data, one can do the following:
@@ -45,30 +77,3 @@ Extensive exploration suggests that the originating mortgagee and sponsor IDs an
     * To perform a match between the FHA single family mortgage data and the CoreLogic data, one can do the following:
     1. Sample: CoreLogic FHA loans identified using the loan type indicator
     2. Match Variables: Location (state, county, zip), loan size (to the dollar), interest rate (for a small number of mostly adjustable-rate CoreLogic observations), date (fuzzy, allowing for 1-2 months between the CoreLogic mortgage date and the FHA endorsement month/year), and lender (best to infer lender matches from an initial tight match on non-lender characteristics).
-
-## Track Your Local Data Inventory
-Use the ``log_data_inventory.py`` script to create a CSV snapshot of the raw and clean
-files you currently have stored in the project.
-
-```
-python log_data_inventory.py
-```
-
-By default the inventory is saved to ``data/data_inventory.csv`` and includes file size
-and timestamp metadata for easy review. Adjust the destination by configuring the
-``DATA_DIR`` setting via environment variables (see ``config.py``) if you would like the
-inventory saved elsewhere.
-
-# Possible future extensions
-
-This project is designed to work with minimal use of external resources. However, it would be valuable to integrate the FHA data with external sources like lender IDs (HMDA, FRB, etc.). Below are some suggestions for future extensions that I am open to exploring in collaboration with others.
-
-## Data Enrichment
-- Add support for joining with county-to-XXX crosswalk files (available from Census/HUD)
-    - Merge in HUD area median income (AMI) data
-    - Merge in FHFA house price index (HPI) data
-- Create crosswalks between FHA lenders and other institution IDs:
-    - Build a crosswalk between FHA lender IDs and RSSD IDs to link with regulatory data
-    - Merge in institution-type variables (i.e., banks, non-banks, credit unions)
-- Create utilities to merge FHA data with HMDA data for enhanced lender and borrower characteristics
-    - NOTE: This is almost fully finished for the post-2018 HMDA data, and it will be released shortly

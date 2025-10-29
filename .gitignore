@@ -9,11 +9,8 @@ __pycache__/
 # Cursor
 .cursor/
 
-# Data directories (large files)
+# Data directories
 data/raw/
-data/clean/
-data/clean/archived/
-data/database/
 data/bronze/
 data/silver/
 data/archived.zip
@@ -24,7 +21,6 @@ logs/
 *.log.*
 
 # Image outputs
-*.png
 output/*.html
 
 *egg-info/
@@ -32,4 +28,3 @@ output/*.html
 # Temp files
 examples/temp_browse_sf_data.py
 examples/temp_browse_hecm_data.py
-deprecated/
