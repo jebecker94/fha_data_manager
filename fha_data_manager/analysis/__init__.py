@@ -19,6 +19,7 @@ from .geo import (
     create_county_loan_count_choropleth,
     create_state_loan_count_choropleth,
 )
+from .hhi import compute_lender_hhi
 from .institutions import InstitutionAnalyzer
 from .network import (
     analyze_sponsor_originator_network,
@@ -44,6 +45,7 @@ __all__ = [
     "create_all_trend_plots",
     "create_county_loan_count_choropleth",
     "create_state_loan_count_choropleth",
+    "compute_lender_hhi",
     "analyze_sponsor_originator_network",
     "build_bipartite_graph",
     "compute_centrality_metrics",
