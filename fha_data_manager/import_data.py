@@ -608,20 +608,54 @@ def create_lender_id_to_name_crosswalk(clean_data_folder: PathLike) -> pl.DataFr
 
     enriched = (
         combined.with_columns(
-            pl.col('File_Date')
+            pl.col("File_Date")
             .min()
-            .over(['Institution_Number', 'Institution_Name'])
-            .alias('Min_Date'),
-            pl.col('File_Date')
+            .over(["Institution_Number", "Institution_Name"])
+            .alias("First_Observed"),
+            pl.col("File_Date")
             .max()
-            .over(['Institution_Number', 'Institution_Name'])
-            .alias('Max_Date'),
+            .over(["Institution_Number", "Institution_Name"])
+            .alias("Last_Observed"),
         )
-        .drop(['File_Date'])
+        .select(
+            [
+                "Institution_Number",
+                "Institution_Name",
+                "First_Observed",
+                "Last_Observed",
+            ]
+        )
         .unique()
+        .with_columns(
+            pl.col("First_Observed").dt.strftime("%Y-%m").alias("First_Observed_Period"),
+            pl.col("Last_Observed").dt.strftime("%Y-%m").alias("Last_Observed_Period"),
+            pl.col("First_Observed").dt.date().alias("First_Observed"),
+            pl.col("Last_Observed").dt.date().alias("Last_Observed"),
+        )
     )
 
-    return enriched
+    conflict_flags = (
+        enriched.group_by("Institution_Number")
+        .agg(
+            pl.col("Institution_Name")
+            .n_unique()
+            .alias("Distinct_Name_Count"),
+        )
+        .with_columns(
+            (pl.col("Distinct_Name_Count") > 1).alias("Has_Name_Conflict"),
+        )
+    )
+
+    crosswalk = (
+        enriched.join(conflict_flags, on="Institution_Number", how="left")
+        .with_columns(
+            pl.col("Distinct_Name_Count").fill_null(1),
+            pl.col("Has_Name_Conflict").fill_null(False),
+        )
+        .sort(["Institution_Number", "First_Observed", "Institution_Name"])
+    )
+
+    return crosswalk
 
 
 def clean_sf_sheets(df: pl.DataFrame) -> pl.DataFrame:
