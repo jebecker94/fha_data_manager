@@ -43,7 +43,6 @@
 
 ## Data Management
 - [ ] Implement a data versioning system to track which monthly files have been downloaded and processed, with checksum validation.
-- [ ] Create data archival utilities to compress and archive older monthly files while maintaining quick access to recent data.
 - [ ] Build a data catalog that documents all available variables, their data types, coverage periods, and any known quality issues.
 
 ## Package Distribution
