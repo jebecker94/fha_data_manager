@@ -37,6 +37,9 @@ python examples/06_network_analysis.py
 
 # 7. Geographic analysis with maps
 python examples/07_geographic_analysis.py
+
+# 8. Market concentration analysis with HHIs
+python examples/08_hhi_analysis.py
 ```
 
 ## Example Scripts
@@ -60,8 +63,12 @@ Performs exploratory and institutional analysis on the data.
 Analyzes sponsor-originator relationship networks using graph theory and centrality metrics.
 
 ### 07_geographic_analysis.py
-Creates choropleth maps showing FHA loan counts at the state and county levels, 
+Creates choropleth maps showing FHA loan counts at the state and county levels,
 generating both overall and year-by-year visualizations.
+
+### 08_hhi_analysis.py
+Computes Herfindahl-Hirschman Indices across multiple time and geographic levels
+and produces a Plotly choropleth highlighting sponsor concentration by state.
 
 ## Notes
 

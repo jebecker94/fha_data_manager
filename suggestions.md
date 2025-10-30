@@ -58,7 +58,7 @@
 - [ ] Build an FAQ addressing common research questions about FHA data interpretation and limitations.
 
 ## New Analysis Capabilities
-- [ ] Implement market concentration metrics (Herfindahl-Hirschman Index) at national, state, and county levels to study lender competition over time.
+- [x] Implement market concentration metrics (Herfindahl-Hirschman Index) at national, state, and county levels to study lender competition over time.
 - [ ] Create cohort analysis tools to track lender entry/exit patterns and survival rates over time.
 
 ## Research Features
