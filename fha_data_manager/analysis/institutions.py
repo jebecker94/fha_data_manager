@@ -11,7 +11,7 @@ This module consolidates analysis of:
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import polars as pl
 
@@ -35,6 +35,7 @@ class InstitutionAnalyzer:
         self.data_path = Path(data_path)
         self.df = None
         self.institution_pairs = None
+        self.last_name_change_event_log = None
     
     def load_data(self):
         """Load data from hive structure."""
@@ -209,9 +210,9 @@ class InstitutionAnalyzer:
         
         return errors
     
-    def analyze_name_changes_over_time(self, 
+    def analyze_name_changes_over_time(self,
                                        notable_ids: List[int] = None,
-                                       log_file=None) -> Dict[int, List[Tuple]]:
+                                       log_file=None) -> Dict[str, Any]:
         """
         Analyze how institution names change over time.
         
@@ -220,7 +221,15 @@ class InstitutionAnalyzer:
             log_file: Optional file to log detailed output
             
         Returns:
-            Dictionary mapping institution IDs to their name change sequences
+            Dictionary with two keys:
+                ``id_name_changes``: Mapping of institution IDs to their name
+                    change sequences.
+                ``event_log``: Polars DataFrame describing rename and
+                    ownership transition events for lenders and sponsors.
+
+        Side Effects:
+            Populates ``self.last_name_change_event_log`` with the event log
+            for later reuse.
         """
         log_message("\n=== Analyzing Name Changes Over Time ===", log_file)
         
@@ -294,7 +303,396 @@ class InstitutionAnalyzer:
             if len(data["transitions"]) > 5:
                 log_message(f"  ... and {len(data['transitions']) - 5} more", log_file)
         
-        return id_name_changes
+        event_log = self._build_name_change_event_log(df_with_period)
+
+        log_message(
+            f"\nGenerated {event_log.height} structured rename/ownership events",
+            log_file,
+        )
+
+        # Store for downstream access while returning a richer structure
+        self.last_name_change_event_log = event_log
+
+        return {
+            "id_name_changes": id_name_changes,
+            "event_log": event_log,
+        }
+
+    def _build_name_change_event_log(self, df_with_period: pl.LazyFrame) -> pl.DataFrame:
+        """Create a structured event log of rename and ownership transitions."""
+
+        event_records: List[Dict] = []
+
+        originator_events = self._build_entity_name_events(
+            df_with_period,
+            entity_type="Originator",
+            name_col="Originating Mortgagee",
+            id_col="Originating Mortgagee Number",
+        )
+        sponsor_events = self._build_entity_name_events(
+            df_with_period,
+            entity_type="Sponsor",
+            name_col="Sponsor Name",
+            id_col="Sponsor Number",
+        )
+
+        event_records.extend(originator_events)
+        event_records.extend(sponsor_events)
+
+        ownership_events = self._build_ownership_transition_events(df_with_period)
+        event_records.extend(ownership_events)
+
+        if not event_records:
+            return pl.DataFrame({
+                "entity_type": [],
+                "event_type": [],
+                "institution_number": [],
+                "effective_period": [],
+                "previous_names": [],
+                "new_names": [],
+                "previous_start_period": [],
+                "previous_end_period": [],
+                "new_start_period": [],
+                "new_end_period": [],
+                "previous_duration_months": [],
+                "new_duration_months": [],
+                "previous_observation_count": [],
+                "new_observation_count": [],
+                "metadata": [],
+            })
+
+        return (
+            pl.DataFrame(event_records)
+            .with_columns([
+                pl.col("institution_number").cast(pl.Utf8),
+                pl.col("effective_period").cast(pl.Utf8),
+            ])
+            .sort(["institution_number", "effective_period", "event_type"])
+        )
+
+    def _build_entity_name_events(
+        self,
+        df_with_period: pl.LazyFrame,
+        *,
+        entity_type: str,
+        name_col: str,
+        id_col: str,
+    ) -> List[Dict]:
+        """Construct rename events for a single entity type."""
+
+        aggregated = (
+            df_with_period
+            .select([
+                "period",
+                name_col,
+                id_col,
+            ])
+            .filter(pl.col(id_col).is_not_null())
+            .group_by(["period", id_col])
+            .agg([
+                pl.col(name_col).drop_nulls().unique().alias("names_in_period"),
+                pl.count().alias("record_count"),
+            ])
+            .sort([id_col, "period"])
+            .collect()
+        )
+
+        events: List[Dict] = []
+
+        grouped = aggregated.partition_by(id_col, as_dict=True)
+        for id_value, frame in grouped.items():
+            rows = frame.sort("period").to_dicts()
+            segments, ambiguous = self._segment_sequences(
+                rows,
+                value_key="names_in_period",
+            )
+
+            events.extend(
+                self._segments_to_events(
+                    segments,
+                    ambiguous,
+                    entity_type=entity_type,
+                    institution_number=id_value,
+                )
+            )
+
+        return events
+
+    def _build_ownership_transition_events(
+        self,
+        df_with_period: pl.LazyFrame,
+    ) -> List[Dict]:
+        """Identify sponsor ownership transitions for each originator."""
+
+        aggregated = (
+            df_with_period
+            .select([
+                "period",
+                "Originating Mortgagee Number",
+                "Sponsor Number",
+                "Sponsor Name",
+            ])
+            .filter(
+                pl.col("Originating Mortgagee Number").is_not_null()
+            )
+            .group_by(["period", "Originating Mortgagee Number"])
+            .agg([
+                pl.col("Sponsor Number").drop_nulls().unique().alias("sponsor_numbers"),
+                pl.col("Sponsor Name").drop_nulls().unique().alias("sponsor_names"),
+                pl.count().alias("record_count"),
+            ])
+            .sort(["Originating Mortgagee Number", "period"])
+            .collect()
+        )
+
+        if aggregated.is_empty():
+            return []
+
+        sponsor_name_lookup = (
+            df_with_period
+            .select([
+                "Sponsor Number",
+                "Sponsor Name",
+            ])
+            .filter(
+                pl.col("Sponsor Number").is_not_null()
+                & pl.col("Sponsor Name").is_not_null()
+            )
+            .group_by("Sponsor Number")
+            .agg([
+                pl.col("Sponsor Name").drop_nulls().mode().alias("canonical_name"),
+            ])
+            .with_columns(
+                pl.when(pl.col("canonical_name").list.len() > 0)
+                .then(pl.col("canonical_name").list.first())
+                .otherwise(None)
+                .alias("canonical_name")
+            )
+            .select(["Sponsor Number", "canonical_name"])
+            .to_dict(as_series=False)
+        )
+
+        sponsor_lookup = dict(zip(
+            sponsor_name_lookup.get("Sponsor Number", []),
+            sponsor_name_lookup.get("canonical_name", []),
+        ))
+
+        events: List[Dict] = []
+
+        grouped = aggregated.partition_by("Originating Mortgagee Number", as_dict=True)
+        for id_value, frame in grouped.items():
+            rows = frame.sort("period").to_dicts()
+            segments, ambiguous = self._segment_sequences(
+                rows,
+                value_key="sponsor_numbers",
+            )
+
+            if segments:
+                # Ownership transition events compare sponsor number sets
+                for prev_seg, curr_seg in zip(segments, segments[1:]):
+                    prev_numbers_raw = list(prev_seg["value"])
+                    curr_numbers_raw = list(curr_seg["value"])
+                    prev_numbers = [str(num) for num in prev_numbers_raw]
+                    curr_numbers = [str(num) for num in curr_numbers_raw]
+
+                    events.append({
+                        "entity_type": "Originator",
+                        "event_type": "ownership_transition",
+                        "institution_number": str(id_value),
+                        "effective_period": curr_seg["start_period"],
+                        "previous_names": [
+                            sponsor_lookup.get(num, None) for num in prev_numbers_raw
+                        ],
+                        "new_names": [
+                            sponsor_lookup.get(num, None) for num in curr_numbers_raw
+                        ],
+                        "previous_start_period": prev_seg["start_period"],
+                        "previous_end_period": prev_seg["end_period"],
+                        "new_start_period": curr_seg["start_period"],
+                        "new_end_period": curr_seg["end_period"],
+                        "previous_duration_months": len(prev_seg["periods"]),
+                        "new_duration_months": len(curr_seg["periods"]),
+                        "previous_observation_count": prev_seg["total_records"],
+                        "new_observation_count": curr_seg["total_records"],
+                        "metadata": {
+                            "previous_sponsor_numbers": prev_numbers,
+                            "new_sponsor_numbers": curr_numbers,
+                            "previous_segment_periods": prev_seg["periods"],
+                            "new_segment_periods": curr_seg["periods"],
+                        },
+                    })
+
+            for ambiguous_event in ambiguous:
+                raw_numbers = list(ambiguous_event["raw_values"])
+                numbers = [str(num) for num in raw_numbers]
+                events.append({
+                    "entity_type": "Originator",
+                    "event_type": "multiple_sponsors_in_period",
+                    "institution_number": str(id_value),
+                    "effective_period": ambiguous_event["period"],
+                    "previous_names": [],
+                    "new_names": [
+                        sponsor_lookup.get(num, None) for num in raw_numbers
+                    ],
+                    "previous_start_period": None,
+                    "previous_end_period": None,
+                    "new_start_period": ambiguous_event["period"],
+                    "new_end_period": ambiguous_event["period"],
+                    "previous_duration_months": 0,
+                    "new_duration_months": 1,
+                    "previous_observation_count": 0,
+                    "new_observation_count": ambiguous_event.get("record_count", 0),
+                    "metadata": {
+                        "sponsor_numbers": numbers,
+                        "observed_sponsor_names": [
+                            sponsor_lookup.get(num, None) for num in raw_numbers
+                        ],
+                    },
+                })
+
+        return events
+
+    def _segment_sequences(
+        self,
+        rows: List[Dict],
+        *,
+        value_key: str,
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """Convert period-level observations into contiguous segments."""
+
+        segments: List[Dict] = []
+        ambiguous_events: List[Dict] = []
+
+        current_value = None
+        period_buffer: List[str] = []
+        total_records = 0
+
+        for row in rows:
+            period = row["period"]
+            values = row[value_key]
+            values = [v for v in values if v is not None]
+            value_tuple = tuple(sorted(values))
+
+            if len(row[value_key]) > 1:
+                ambiguous_events.append({
+                    "period": period,
+                    "value": value_tuple,
+                    "raw_values": row[value_key],
+                    "record_count": row.get("record_count", 0),
+                })
+
+            if current_value is None:
+                current_value = value_tuple
+                period_buffer = [period]
+                total_records = row.get("record_count", 0)
+                continue
+
+            if value_tuple == current_value:
+                period_buffer.append(period)
+                total_records += row.get("record_count", 0)
+            else:
+                segments.append({
+                    "value": current_value,
+                    "start_period": period_buffer[0],
+                    "end_period": period_buffer[-1],
+                    "periods": period_buffer.copy(),
+                    "total_records": total_records,
+                })
+                current_value = value_tuple
+                period_buffer = [period]
+                total_records = row.get("record_count", 0)
+
+        if current_value is not None and period_buffer:
+            segments.append({
+                "value": current_value,
+                "start_period": period_buffer[0],
+                "end_period": period_buffer[-1],
+                "periods": period_buffer.copy(),
+                "total_records": total_records,
+            })
+
+        return segments, ambiguous_events
+
+    def _segments_to_events(
+        self,
+        segments: List[Dict],
+        ambiguous_events: List[Dict],
+        *,
+        entity_type: str,
+        institution_number,
+    ) -> List[Dict]:
+        """Convert contiguous name segments into structured events."""
+
+        events: List[Dict] = []
+
+        if not segments:
+            return events
+
+        first_segment = segments[0]
+        events.append({
+            "entity_type": entity_type,
+            "event_type": "appearance",
+            "institution_number": str(institution_number),
+            "effective_period": first_segment["start_period"],
+            "previous_names": [],
+            "new_names": list(first_segment["value"]),
+            "previous_start_period": None,
+            "previous_end_period": None,
+            "new_start_period": first_segment["start_period"],
+            "new_end_period": first_segment["end_period"],
+            "previous_duration_months": 0,
+            "new_duration_months": len(first_segment["periods"]),
+            "previous_observation_count": 0,
+            "new_observation_count": first_segment["total_records"],
+            "metadata": {
+                "segment_periods": first_segment["periods"],
+            },
+        })
+
+        for prev_segment, curr_segment in zip(segments, segments[1:]):
+            events.append({
+                "entity_type": entity_type,
+                "event_type": "rename",
+                "institution_number": str(institution_number),
+                "effective_period": curr_segment["start_period"],
+                "previous_names": list(prev_segment["value"]),
+                "new_names": list(curr_segment["value"]),
+                "previous_start_period": prev_segment["start_period"],
+                "previous_end_period": prev_segment["end_period"],
+                "new_start_period": curr_segment["start_period"],
+                "new_end_period": curr_segment["end_period"],
+                "previous_duration_months": len(prev_segment["periods"]),
+                "new_duration_months": len(curr_segment["periods"]),
+                "previous_observation_count": prev_segment["total_records"],
+                "new_observation_count": curr_segment["total_records"],
+                "metadata": {
+                    "previous_segment_periods": prev_segment["periods"],
+                    "new_segment_periods": curr_segment["periods"],
+                },
+            })
+
+        for ambiguous in ambiguous_events:
+            events.append({
+                "entity_type": entity_type,
+                "event_type": "ambiguous_identity",
+                "institution_number": str(institution_number),
+                "effective_period": ambiguous["period"],
+                "previous_names": list(ambiguous["value"]),
+                "new_names": list(ambiguous["raw_values"]),
+                "previous_start_period": None,
+                "previous_end_period": None,
+                "new_start_period": ambiguous["period"],
+                "new_end_period": ambiguous["period"],
+                "previous_duration_months": 0,
+                "new_duration_months": 1,
+                "previous_observation_count": 0,
+                "new_observation_count": ambiguous.get("record_count", 0),
+                "metadata": {
+                    "observed_names": ambiguous["raw_values"],
+                },
+            })
+
+        return events
     
     def _analyze_single_id(self, id_num: int, df_with_period, log_file=None):
         """Analyze a single institution ID in detail."""
