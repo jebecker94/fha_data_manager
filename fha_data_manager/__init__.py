@@ -20,6 +20,7 @@ from .import_cli import (
 )
 from .import_data import (
     add_county_fips,
+    build_county_fips_crosswalk,
     clean_hecm_sheets,
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
@@ -46,6 +47,7 @@ __all__ = [
     "import_single_family_snapshots",
     # Import/cleaning functionality
     "add_county_fips",
+    "build_county_fips_crosswalk",
     "clean_hecm_sheets",
     "convert_fha_hecm_snapshots",
     "convert_fha_sf_snapshots",

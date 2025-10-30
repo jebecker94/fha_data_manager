@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from multiprocessing import get_context
 from os import cpu_count
@@ -41,6 +42,11 @@ PathLike: TypeAlias = Path | str
 SnapshotType: TypeAlias = Literal['single_family', 'hecm']
 
 logger = logging.getLogger(__name__)
+
+COUNTY_FIPS_OVERRIDES: dict[tuple[str, str], str] = {
+    ("DC", "WASHINGTON"): "11001",
+    ("DC", "DISTRICT OF COLUMBIA"): "11001",
+}
 
 
 # Support Functions
@@ -162,6 +168,31 @@ def standardize_county_names(
     return df
 
 
+def _read_tabular_file(path: Path) -> pl.DataFrame:
+    """Read a CSV or parquet file into a Polars DataFrame."""
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return pl.read_csv(path)
+    if suffix in {".parquet", ".pq"}:
+        return pl.read_parquet(path)
+    raise ValueError(f"Unsupported file extension for {path}")
+
+
+def _write_tabular_file(df: pl.DataFrame, path: Path) -> None:
+    """Persist a Polars DataFrame to CSV or parquet."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        df.write_csv(path)
+        return
+    if suffix in {".parquet", ".pq"}:
+        df.write_parquet(path)
+        return
+    raise ValueError(f"Unsupported file extension for {path}")
+
+
 def add_county_fips(
     df: pl.LazyFrame,
     state_col: str = "Property State",
@@ -216,6 +247,259 @@ def add_county_fips(
 
     # Return DataFrame
     return df
+
+
+def build_county_fips_crosswalk(
+    bronze_folder: PathLike,
+    crosswalk_path: PathLike,
+    problematic_path: PathLike,
+    state_col: str = "Property State",
+    county_col: str = "Property County",
+    fips_col: str = "FIPS",
+    manual_overrides: Mapping[tuple[str, str], str] | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Create or extend a county FIPS crosswalk from bronze snapshot files.
+
+    The function scans the bronze-level parquet datasets for both the single
+    family and HECM programs, standardises county names using the same logic as
+    the main import pipeline, and applies the :mod:`addfips` lookup augmented by
+    manual overrides. New state/county combinations are appended to the
+    ``crosswalk_path`` file, and any unresolved observations are written to
+    ``problematic_path``.
+
+    Args:
+        bronze_folder: Directory containing ``single_family`` and ``hecm``
+            bronze parquet files.
+        crosswalk_path: Destination for the successful crosswalk mappings. The
+            extension determines whether a CSV or parquet file is written.
+        problematic_path: Destination for observations that could not be
+            matched to a FIPS code.
+        state_col: Name of the state column in the source data.
+        county_col: Name of the county column in the source data.
+        fips_col: Name of the output FIPS column in the crosswalk.
+        manual_overrides: Additional manual mappings from ``(state, county)`` to
+            FIPS codes. Overrides are combined with the built-in corrections.
+
+    Returns:
+        Tuple containing the updated crosswalk dataframe and the dataframe of
+        problematic observations.
+    """
+
+    bronze_root = Path(bronze_folder)
+    crosswalk_file = Path(crosswalk_path)
+    problematic_file = Path(problematic_path)
+
+    manual_map: dict[tuple[str, str], str] = dict(COUNTY_FIPS_OVERRIDES)
+    if manual_overrides:
+        manual_map.update(
+            {(
+                state.upper(),
+                county.upper(),
+            ): code
+             for (state, county), code in manual_overrides.items()}
+        )
+
+    logger.info("Scanning bronze datasets for unique state/county pairs...")
+    lazy_frames: list[pl.LazyFrame] = []
+    for dataset in ("single_family", "hecm"):
+        dataset_dir = bronze_root / dataset
+        if not dataset_dir.exists():
+            logger.warning("Bronze dataset folder missing: %s", dataset_dir)
+            continue
+
+        dataset_pattern = dataset_dir / "*.parquet"
+        try:
+            lf = pl.scan_parquet(str(dataset_pattern)).select(
+                [
+                    pl.col(state_col).cast(pl.Utf8, strict=False).alias(state_col),
+                    pl.col(county_col).cast(pl.Utf8, strict=False).alias(county_col),
+                ]
+            )
+        except FileNotFoundError:
+            logger.warning("No parquet files found for dataset: %s", dataset_dir)
+            continue
+        lazy_frames.append(lf)
+
+    if not lazy_frames:
+        msg = "No bronze parquet files were found for single_family or hecm."
+        raise FileNotFoundError(msg)
+
+    combined = pl.concat(lazy_frames, how="diagonal_relaxed")
+    combined = standardize_county_names(
+        combined, state_col=state_col, county_col=county_col
+    )
+    combined = combined.with_columns(pl.col(state_col).str.to_uppercase())
+
+    unique_pairs = (
+        combined
+        .filter(
+            pl.col(state_col).is_not_null()
+            & pl.col(county_col).is_not_null()
+            & (pl.col(state_col) != "")
+            & (pl.col(county_col) != "")
+        )
+        .select([state_col, county_col])
+        .unique()
+        .collect()
+    )
+
+    logger.info("Loaded %d unique state/county pairs", len(unique_pairs))
+
+    existing_crosswalk: pl.DataFrame | None = None
+    if crosswalk_file.exists():
+        logger.info("Reading existing crosswalk from %s", crosswalk_file)
+        existing_crosswalk = _read_tabular_file(crosswalk_file)
+        existing_crosswalk = (
+            standardize_county_names(
+                existing_crosswalk.lazy(),
+                state_col=state_col,
+                county_col=county_col,
+            )
+            .with_columns(
+                pl.col(state_col).str.to_uppercase(),
+                pl.col(fips_col)
+                .cast(pl.Utf8, strict=False)
+                .str.strip_chars()
+                .str.zfill(5)
+                .alias(fips_col),
+            )
+            .collect()
+        )
+
+    known_pairs = (
+        existing_crosswalk.select([state_col, county_col]).unique()
+        if existing_crosswalk is not None
+        else pl.DataFrame(
+            {
+                state_col: pl.Series([], dtype=pl.Utf8),
+                county_col: pl.Series([], dtype=pl.Utf8),
+            }
+        )
+    )
+
+    new_pairs = unique_pairs.join(
+        known_pairs, on=[state_col, county_col], how="anti"
+    )
+
+    logger.info("Identified %d new state/county pairs", len(new_pairs))
+
+    af = addfips.AddFIPS()
+    crosswalk_records: list[tuple[str, str, str]] = []
+    problematic_records: list[tuple[str, str]] = []
+
+    for state, county in new_pairs.iter_rows():
+        key = (state, county)
+        fips = manual_map.get(key)
+        if not fips:
+            fips = af.get_county_fips(county, state)
+        if fips:
+            crosswalk_records.append((state, county, str(fips).zfill(5)))
+        else:
+            problematic_records.append((state, county))
+
+    new_crosswalk = (
+        pl.DataFrame(
+            {
+                state_col: [record[0] for record in crosswalk_records],
+                county_col: [record[1] for record in crosswalk_records],
+                fips_col: [record[2] for record in crosswalk_records],
+            }
+        )
+        if crosswalk_records
+        else pl.DataFrame(
+            {
+                state_col: pl.Series([], dtype=pl.Utf8),
+                county_col: pl.Series([], dtype=pl.Utf8),
+                fips_col: pl.Series([], dtype=pl.Utf8),
+            }
+        )
+    )
+
+    new_problematic = (
+        pl.DataFrame(
+            {
+                state_col: [record[0] for record in problematic_records],
+                county_col: [record[1] for record in problematic_records],
+            }
+        )
+        if problematic_records
+        else pl.DataFrame(
+            {
+                state_col: pl.Series([], dtype=pl.Utf8),
+                county_col: pl.Series([], dtype=pl.Utf8),
+            }
+        )
+    )
+
+    crosswalk_frames: list[pl.DataFrame] = []
+    if existing_crosswalk is not None:
+        crosswalk_frames.append(existing_crosswalk)
+    if not new_crosswalk.is_empty():
+        crosswalk_frames.append(new_crosswalk)
+
+    if crosswalk_frames:
+        updated_crosswalk = (
+            pl.concat(crosswalk_frames, how="diagonal_relaxed")
+            .unique(subset=[state_col, county_col], keep="first")
+            .sort([state_col, county_col])
+        )
+    else:
+        updated_crosswalk = pl.DataFrame(
+            {
+                state_col: pl.Series([], dtype=pl.Utf8),
+                county_col: pl.Series([], dtype=pl.Utf8),
+                fips_col: pl.Series([], dtype=pl.Utf8),
+            }
+        )
+
+    existing_problematic: pl.DataFrame | None = None
+    if problematic_file.exists():
+        logger.info("Reading existing problematic observations from %s", problematic_file)
+        existing_problematic = (
+            standardize_county_names(
+                _read_tabular_file(problematic_file).lazy(),
+                state_col=state_col,
+                county_col=county_col,
+            )
+            .with_columns(pl.col(state_col).str.to_uppercase())
+            .collect()
+        )
+
+    problematic_frames: list[pl.DataFrame] = []
+    if existing_problematic is not None and not existing_problematic.is_empty():
+        resolved_pairs = updated_crosswalk.select([state_col, county_col])
+        existing_problematic = existing_problematic.join(
+            resolved_pairs, on=[state_col, county_col], how="anti"
+        )
+        if not existing_problematic.is_empty():
+            problematic_frames.append(existing_problematic)
+    if not new_problematic.is_empty():
+        problematic_frames.append(new_problematic)
+
+    if problematic_frames:
+        updated_problematic = (
+            pl.concat(problematic_frames, how="diagonal_relaxed")
+            .unique()
+            .sort([state_col, county_col])
+        )
+    else:
+        updated_problematic = pl.DataFrame(
+            {
+                state_col: pl.Series([], dtype=pl.Utf8),
+                county_col: pl.Series([], dtype=pl.Utf8),
+            }
+        )
+
+    logger.info(
+        "Crosswalk now contains %d rows; %d problematic observations recorded",
+        len(updated_crosswalk),
+        len(updated_problematic),
+    )
+
+    _write_tabular_file(updated_crosswalk, crosswalk_file)
+    _write_tabular_file(updated_problematic, problematic_file)
+
+    return updated_crosswalk, updated_problematic
 
 
 def _apply_single_family_categoricals(df: pl.LazyFrame) -> pl.LazyFrame:
