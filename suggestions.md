@@ -42,7 +42,7 @@
 - [ ] Build a CLI tool for quick data queries (e.g., `fha-data query --lender "Wells Fargo" --year 2020 --output results.csv`).
 
 ## Data Management
-- [ ] Implement a data versioning system to track which monthly files have been downloaded and processed, with checksum validation.
+- [x] Implement a data versioning system to track which monthly files have been downloaded and processed, with checksum validation.
 - [ ] Build a data catalog that documents all available variables, their data types, coverage periods, and any known quality issues.
 
 ## Package Distribution

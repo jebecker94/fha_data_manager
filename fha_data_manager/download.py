@@ -14,6 +14,8 @@ from urllib.parse import urljoin, urlparse
 import requests  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup
 
+from fha_data_manager.utils.versioning import SnapshotManifest
+
 # Configure basic logging
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,8 @@ def download_excel_files_from_url(
     """
 
     try:
+
+        manifest = SnapshotManifest()
 
         # Ensure the destination folder exists
         dest_path = Path(destination_folder)
@@ -133,7 +137,25 @@ def download_excel_files_from_url(
                         # Process zip files if applicable
                         if file_path.suffix.lower() == '.zip':
                             logger.info("Processing zip file: %s", standardized_name)
-                            process_zip_file(file_path, dest_path, file_type)
+                            extracted = process_zip_file(file_path, dest_path, file_type)
+                            for extracted_path in extracted:
+                                try:
+                                    manifest.record_download(extracted_path, snapshot_type=file_type)
+                                except Exception as exc:  # pragma: no cover - defensive
+                                    logger.warning(
+                                        "Unable to record extracted file %s in manifest: %s",
+                                        extracted_path,
+                                        exc,
+                                    )
+                        else:
+                            try:
+                                manifest.record_download(file_path, snapshot_type=file_type)
+                            except Exception as exc:  # pragma: no cover - defensive
+                                logger.warning(
+                                    "Unable to record download %s in manifest: %s",
+                                    file_path,
+                                    exc,
+                                )
 
                         # Courtesy Pause
                         time.sleep(pause_length)
@@ -328,7 +350,9 @@ def standardize_filename(original_filename: str | Path, file_type: str | None) -
         return base_name  # Return original filename if conversion fails
 
 
-def process_zip_file(zip_path: PathLike, destination_folder: PathLike, file_type: str | None) -> None:
+def process_zip_file(
+    zip_path: PathLike, destination_folder: PathLike, file_type: str | None
+) -> list[Path]:
     """Extract files from ``zip_path`` into ``destination_folder``.
 
     Any spreadsheets discovered inside the archive are renamed using
@@ -339,59 +363,72 @@ def process_zip_file(zip_path: PathLike, destination_folder: PathLike, file_type
         destination_folder: Folder where processed files should be saved.
         file_type: Snapshot type used to standardise filenames (``"sf"`` or
             ``"hecm"``). When ``None`` filenames are preserved as extracted.
+
+    Returns:
+        A list containing the paths to extracted spreadsheet files located in
+        ``destination_folder``.
     """
     try:
-        # Get the standardized name of the zip file (without .zip extension)
         zip_path = Path(zip_path)
         destination_path = Path(destination_folder)
         destination_path.mkdir(parents=True, exist_ok=True)
         zip_filename = zip_path.name
         try:
-            # Try to extract date information from zip filename
             zip_year = find_years_in_string(zip_filename)
             zip_month = find_month_in_string(zip_filename)
             has_zip_date = zip_year is not None and zip_month is not None
         except ValueError:
             has_zip_date = False
 
+        extracted_files: list[Path] = []
+
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir_path = Path(temp_dir)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                # Extract all files to temporary directory
                 zip_ref.extractall(temp_dir)
 
-                # Process each file in the extracted contents
                 for source_path in temp_dir_path.rglob('*'):
-                    if source_path.is_file() and source_path.suffix.lower() in ('.xlsx', '.xls', '.xlsm', '.xlsb'):
-                        try:
-                            # Try to standardize filename using file's own date info
-                            new_filename = standardize_filename(source_path.name, file_type)
-                        except ValueError:
-                            # If no date in filename and we have zip date info, use zip's date
-                            if has_zip_date and file_type is not None:
-                                date_str = f"{zip_year}{str(zip_month).zfill(2)}01"
-                                extension = source_path.suffix
-                                if file_type == 'sf':
-                                    new_filename = f"fha_sf_snapshot_{date_str}{extension}"
-                                elif file_type == 'hecm':
-                                    new_filename = f"fha_hecm_snapshot_{date_str}{extension}"
-                                logger.info("Using zip file date for %s: %s", source_path.name, new_filename)
-                            else:
-                                # If no date information available anywhere, use original filename
-                                new_filename = source_path.name
-                                logger.warning("No date information found for %s, keeping original name", source_path.name)
+                    if not source_path.is_file() or source_path.suffix.lower() not in (
+                        '.xlsx', '.xls', '.xlsm', '.xlsb'
+                    ):
+                        continue
 
-                        dest_path = destination_path / new_filename
-
-                        # Copy file to destination with standardized name
-                        if not dest_path.exists():
-                            logger.info("Processing extracted file: %s -> %s", source_path.name, new_filename)
-                            dest_path.write_bytes(source_path.read_bytes())
+                    try:
+                        new_filename = standardize_filename(source_path.name, file_type)
+                    except ValueError:
+                        if has_zip_date and file_type is not None:
+                            date_str = f"{zip_year}{str(zip_month).zfill(2)}01"
+                            extension = source_path.suffix
+                            if file_type == 'sf':
+                                new_filename = f"fha_sf_snapshot_{date_str}{extension}"
+                            elif file_type == 'hecm':
+                                new_filename = f"fha_hecm_snapshot_{date_str}{extension}"
+                            logger.info(
+                                "Using zip file date for %s: %s", source_path.name, new_filename
+                            )
                         else:
-                            logger.info("Skipping existing file: %s", new_filename)
-                                
+                            new_filename = source_path.name
+                            logger.warning(
+                                "No date information found for %s, keeping original name",
+                                source_path.name,
+                            )
+
+                    dest_path = destination_path / new_filename
+
+                    if not dest_path.exists():
+                        logger.info("Processing extracted file: %s -> %s", source_path.name, new_filename)
+                        dest_path.write_bytes(source_path.read_bytes())
+                    else:
+                        logger.info("Skipping existing file: %s", new_filename)
+
+                    extracted_files.append(dest_path)
+
+        return extracted_files
+
     except zipfile.BadZipFile as e:
         logger.error("Error processing zip file %s: %s", zip_path, e)
     except Exception as e:
         logger.error("Unexpected error processing zip file %s: %s", zip_path, e)
+
+    return []
 

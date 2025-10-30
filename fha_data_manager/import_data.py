@@ -16,6 +16,7 @@ import addfips
 import pandas as pd
 import polars as pl
 from .utils.mtgdicts import FHADictionary
+from .utils.versioning import SnapshotManifest
 
 import fastexcel
 
@@ -820,6 +821,7 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
     save_folder.mkdir(parents=True, exist_ok=True)
 
     tasks: list[_SnapshotConversionTask] = []
+    manifest = SnapshotManifest()
 
     # Read data file-by-file
     for year in range(2010, 2099):
@@ -833,6 +835,20 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
 
             if output_file.exists() and not overwrite:
                 logger.info('File %s already exists!', output_file)
+                status = manifest.get_status("single_family", year, mon)
+                if status is None or not status.is_processed:
+                    try:
+                        manifest.record_processing(
+                            raw_path=input_file,
+                            processed_path=output_file,
+                            snapshot_type="single_family",
+                        )
+                    except FileNotFoundError:
+                        logger.warning(
+                            "Processed file %s registered but raw %s missing for manifest",
+                            output_file,
+                            input_file,
+                        )
                 continue
 
             tasks.append(
@@ -849,6 +865,19 @@ def convert_fha_sf_snapshots(data_folder: Path, save_folder: Path, overwrite: bo
         logger.info(f'First file: {tasks[0].input_file}, output: {tasks[0].output_file}')
     
     _run_parallel_conversions(tasks, _convert_single_family_snapshot)
+
+    for task in tasks:
+        if not task.output_file.exists():
+            logger.warning("Expected processed file %s missing after conversion", task.output_file)
+            continue
+        try:
+            manifest.record_processing(
+                raw_path=task.input_file,
+                processed_path=task.output_file,
+                snapshot_type="single_family",
+            )
+        except FileNotFoundError as exc:
+            logger.warning("Unable to update manifest for %s: %s", task.output_file, exc)
 
 
 def _convert_single_family_snapshot(task: _SnapshotConversionTask) -> None:
@@ -1020,6 +1049,7 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
     save_folder.mkdir(parents=True, exist_ok=True)
 
     tasks: list[_SnapshotConversionTask] = []
+    manifest = SnapshotManifest()
 
     # Read data file-by-file
     for year in range(2010, 2099):
@@ -1033,6 +1063,20 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
 
             if output_file.exists() and not overwrite:
                 logger.info('File %s already exists!', output_file)
+                status = manifest.get_status("hecm", year, mon)
+                if status is None or not status.is_processed:
+                    try:
+                        manifest.record_processing(
+                            raw_path=input_file,
+                            processed_path=output_file,
+                            snapshot_type="hecm",
+                        )
+                    except FileNotFoundError:
+                        logger.warning(
+                            "Processed file %s registered but raw %s missing for manifest",
+                            output_file,
+                            input_file,
+                        )
                 continue
 
             tasks.append(
@@ -1045,6 +1089,19 @@ def convert_fha_hecm_snapshots(data_folder: Path, save_folder: Path, overwrite: 
             )
 
     _run_parallel_conversions(tasks, _convert_hecm_snapshot)
+
+    for task in tasks:
+        if not task.output_file.exists():
+            logger.warning("Expected processed file %s missing after conversion", task.output_file)
+            continue
+        try:
+            manifest.record_processing(
+                raw_path=task.input_file,
+                processed_path=task.output_file,
+                snapshot_type="hecm",
+            )
+        except FileNotFoundError as exc:
+            logger.warning("Unable to update manifest for %s: %s", task.output_file, exc)
 
 
 def _convert_hecm_snapshot(task: _SnapshotConversionTask) -> None:
