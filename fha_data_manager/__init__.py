@@ -28,6 +28,7 @@ from .import_data import (
     save_clean_snapshots_to_db,
     standardize_county_names,
 )
+from .utils.versioning import SnapshotManifest
 
 __all__ = [
     # Download functionality
@@ -54,4 +55,6 @@ __all__ = [
     "create_lender_id_to_name_crosswalk",
     "save_clean_snapshots_to_db",
     "standardize_county_names",
+    # Versioning
+    "SnapshotManifest",
 ]

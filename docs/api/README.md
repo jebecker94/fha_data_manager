@@ -42,12 +42,12 @@ The following sections document each public function or class.
   - **Returns**: Filename rewritten to ``fha_<type>_snapshot_YYYYMM01.<ext>`` when possible; otherwise the unmodified name.
   - **Raises**: ``ValueError`` if `file_type` is unrecognised or the filename cannot be parsed.
 
-- `process_zip_file(zip_path: PathLike, destination_folder: PathLike, file_type: str | None) -> None`
-  - **Parameters**
-    - `zip_path`: Location of the downloaded archive.
-    - `destination_folder`: Extraction target; created if necessary.
-    - `file_type`: Snapshot type used when renaming extracted spreadsheets; ``None`` keeps original names.
-  - **Returns**: ``None``. Extracted spreadsheets are copied into `destination_folder`.
+  - `process_zip_file(zip_path: PathLike, destination_folder: PathLike, file_type: str | None) -> list[Path]`
+    - **Parameters**
+      - `zip_path`: Location of the downloaded archive.
+      - `destination_folder`: Extraction target; created if necessary.
+      - `file_type`: Snapshot type used when renaming extracted spreadsheets; ``None`` keeps original names.
+    - **Returns**: List of extracted spreadsheet paths written under `destination_folder`.
 
 ### Import helpers (`fha_data_manager.import_data`)
 
