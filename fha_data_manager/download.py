@@ -24,6 +24,72 @@ Headers: TypeAlias = dict[str, str]
 ExcelExtensions: TypeAlias = tuple[str, ...]
 
 
+def download_dataset_from_huggingface_hub(
+    repo_id: str,
+    *,
+    destination_root: PathLike = Path("data"),
+    medallion_layer: str = "silver",
+    dataset_subdir: str | None = None,
+    repo_type: str = "dataset",
+    revision: str | None = None,
+    token: str | None = None,
+    allow_patterns: list[str] | None = None,
+    ignore_patterns: list[str] | None = None,
+    local_dir_use_symlinks: bool = False,
+) -> Path:
+    """Download a snapshot from the Hugging Face Hub into a medallion directory.
+
+    Args:
+        repo_id: The fully qualified dataset or model repository identifier on the
+            Hugging Face Hub (e.g. ``"owner/dataset"``).
+        destination_root: Base directory that contains the medallion-layer folders
+            (defaults to ``data``).
+        medallion_layer: The medallion layer folder name to write into, typically one
+            of ``"bronze"``, ``"silver"`` or ``"gold"``.
+        dataset_subdir: Optional subdirectory name below the medallion folder. When
+            omitted, a filesystem-safe name is derived from ``repo_id``.
+        repo_type: Hugging Face repository type, usually ``"dataset"`` for tabular
+            data.
+        revision: Optional branch, tag, or commit hash to download.
+        token: Optional authentication token for private repositories.
+        allow_patterns: List of glob-style patterns to include during download.
+        ignore_patterns: List of glob-style patterns to exclude during download.
+        local_dir_use_symlinks: Whether to use symlinks instead of copying files.
+
+    Returns:
+        Path to the directory containing the downloaded snapshot.
+    """
+
+    from huggingface_hub import snapshot_download
+
+    target_root = Path(destination_root)
+    target_dir = target_root / medallion_layer
+    if dataset_subdir is None:
+        dataset_subdir = repo_id.replace("/", "_")
+    target_dir = target_dir / dataset_subdir
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(
+        "Downloading Hugging Face repository %s to %s", repo_id, target_dir
+    )
+
+    snapshot_path = snapshot_download(
+        repo_id=repo_id,
+        repo_type=repo_type,
+        revision=revision,
+        token=token,
+        local_dir=str(target_dir),
+        local_dir_use_symlinks=local_dir_use_symlinks,
+        allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
+        resume_download=True,
+    )
+
+    logger.info("Completed download for %s", repo_id)
+
+    return Path(snapshot_path)
+
+
 def download_excel_files_from_url(
     page_url: str,
     destination_folder: PathLike,

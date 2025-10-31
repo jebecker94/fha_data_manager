@@ -1,6 +1,7 @@
 """Public package interface for FHA Data Manager utilities."""
 
 from .download import (
+    download_dataset_from_huggingface_hub,
     download_excel_files_from_url,
     find_month_in_string,
     find_years_in_string,
@@ -27,11 +28,13 @@ from .import_data import (
     create_lender_id_to_name_crosswalk,
     save_clean_snapshots_to_db,
     standardize_county_names,
+    upload_directory_to_huggingface_hub,
 )
 from .utils.versioning import SnapshotManifest
 
 __all__ = [
     # Download functionality
+    "download_dataset_from_huggingface_hub",
     "download_excel_files_from_url",
     "find_month_in_string",
     "find_years_in_string",
@@ -55,6 +58,7 @@ __all__ = [
     "create_lender_id_to_name_crosswalk",
     "save_clean_snapshots_to_db",
     "standardize_county_names",
+    "upload_directory_to_huggingface_hub",
     # Versioning
     "SnapshotManifest",
 ]

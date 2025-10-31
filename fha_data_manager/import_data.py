@@ -50,6 +50,72 @@ COUNTY_FIPS_OVERRIDES: dict[tuple[str, str], str] = {
 }
 
 
+def upload_directory_to_huggingface_hub(
+    source_path: PathLike,
+    repo_id: str,
+    *,
+    repo_type: str = "dataset",
+    token: str | None = None,
+    path_in_repo: str | None = None,
+    commit_message: str | None = None,
+    revision: str | None = None,
+    private: bool | None = None,
+    create_repo_if_missing: bool = True,
+) -> str:
+    """Upload tabular data from a local directory to the Hugging Face Hub.
+
+    Args:
+        source_path: Local directory containing the files to upload.
+        repo_id: Destination repository identifier on the Hugging Face Hub.
+        repo_type: Type of repository being targeted (defaults to ``"dataset"``).
+        token: Optional authentication token for private repositories.
+        path_in_repo: Optional folder path inside the repository to place the files.
+        commit_message: Commit message to use for the upload.
+        revision: Optional branch, tag, or commit hash to upload against.
+        private: When creating a repository, whether it should be private.
+        create_repo_if_missing: Create the repository if it does not already exist.
+
+    Returns:
+        The URL of the commit created on the Hugging Face Hub.
+    """
+
+    from huggingface_hub import HfApi
+
+    source = Path(source_path)
+    if not source.exists():
+        msg = f"Source path {source} does not exist"
+        raise FileNotFoundError(msg)
+
+    logger.info("Uploading %s to Hugging Face repo %s", source, repo_id)
+
+    api = HfApi(token=token)
+
+    if create_repo_if_missing:
+        api.create_repo(
+            repo_id=repo_id,
+            repo_type=repo_type,
+            private=private,
+            exist_ok=True,
+        )
+
+    message = commit_message or (
+        f"Upload from FHA Data Manager on {datetime.datetime.utcnow().isoformat()}Z"
+    )
+
+    commit_url = api.upload_folder(
+        repo_id=repo_id,
+        repo_type=repo_type,
+        folder_path=str(source),
+        path_in_repo=path_in_repo,
+        revision=revision,
+        commit_message=message,
+    )
+
+    logger.info("Completed upload for %s", repo_id)
+
+    return commit_url
+
+
 # Support Functions
 def standardize_county_names(
     df: pl.LazyFrame,
