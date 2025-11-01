@@ -150,11 +150,11 @@ The following sections document each public function or class.
 
 ### Exploratory analysis (`fha_data_manager.analysis.exploratory`)
 
-- `load_combined_data(data_path: Union[str, Path]) -> pl.DataFrame`
+- `load_combined_data(data_path: Union[str, Path], *, lazy: bool = True) -> pl.LazyFrame | pl.DataFrame`
   - **Parameters**: `data_path` – hive-partitioned parquet directory to scan lazily.
   - **Returns**: Materialised Polars ``DataFrame`` containing the combined dataset.
 
-- `analyze_lender_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]`
+- `analyze_lender_activity(df: pl.DataFrame | pl.LazyFrame) -> Dict[str, pl.DataFrame]`
   - **Parameters**: `df` – snapshot dataset with lender information.
   - **Returns**: Dictionary with ``"lender_volume"`` and ``"yearly_lenders"`` summary tables.
 
@@ -165,15 +165,15 @@ The following sections document each public function or class.
     - `output_path`: Optional path (file or directory) where the panel is written as Parquet.
   - **Returns**: Aggregated Polars ``DataFrame`` of lender-level metrics.
 
-- `analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]`
+- `analyze_sponsor_activity(df: pl.DataFrame | pl.LazyFrame) -> Dict[str, pl.DataFrame]`
   - **Parameters**: `df` – dataset containing sponsor fields.
   - **Returns**: Dictionary keyed by ``"sponsor_volume"`` and ``"yearly_sponsors"``.
 
-- `analyze_refinance_share(df: pl.DataFrame) -> pl.DataFrame`
+- `analyze_refinance_share(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame`
   - **Parameters**: `df` – dataset containing loan purpose information.
   - **Returns**: ``DataFrame`` with columns ``Date``, ``purchase_loan_count``, ``refinance_loan_count``, and ``refinance_share``.
 
-- `analyze_fixed_rate_share(df: pl.DataFrame) -> pl.DataFrame`
+- `analyze_fixed_rate_share(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame`
   - **Parameters**: `df` – dataset including product type and interest rate columns.
   - **Returns**: ``DataFrame`` detailing fixed versus adjustable rate counts, share, and rate statistics by ``Date``.
 

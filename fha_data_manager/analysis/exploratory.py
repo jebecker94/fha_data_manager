@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Dict, Literal, Union
+
 import polars as pl
 import plotly.express as px
 
@@ -11,7 +12,11 @@ from fha_data_manager.utils.logging import configure_logging
 logger = logging.getLogger(__name__)
 
 
-def load_combined_data(data_path: Union[str, Path]) -> pl.DataFrame:
+def load_combined_data(
+    data_path: Union[str, Path],
+    *,
+    lazy: bool = True,
+) -> pl.LazyFrame | pl.DataFrame:
     """
     Load the FHA single-family data from hive structure.
     
@@ -19,16 +24,25 @@ def load_combined_data(data_path: Union[str, Path]) -> pl.DataFrame:
         data_path: Path to the hive-structured parquet directory
         
     Returns:
-        DataFrame containing the combined data
+        A LazyFrame representing the combined data when ``lazy`` is ``True``.
+        When ``lazy`` is ``False`` the fully materialized ``pl.DataFrame`` is
+        returned instead.
     """
     logger.info("Loading data from %s...", data_path)
     # Load from hive structure using polars
-    df = pl.scan_parquet(str(data_path)).collect()
+    lazy_frame = pl.scan_parquet(str(data_path))
+    if lazy:
+        logger.info("Initialized lazy scan for %s", data_path)
+        return lazy_frame
+
+    df = lazy_frame.collect()
     logger.info("Loaded %s records", f"{len(df):,}")
     return df
 
 
-def analyze_lender_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+def analyze_lender_activity(
+    df: pl.DataFrame | pl.LazyFrame,
+) -> Dict[str, pl.DataFrame]:
     """
     Analyze lender activity in the FHA single-family program.
     
@@ -38,11 +52,12 @@ def analyze_lender_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     Returns:
         Dictionary of DataFrames with various lender metrics
     """
-    results = {}
-    
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+    results: Dict[str, pl.DataFrame] = {}
+
     # Top lenders by volume
     lender_volume = (
-        df.group_by('Originating Mortgagee')
+        lf.group_by('Originating Mortgagee')
         .agg([
             pl.col('FHA_Index').count().alias('Loan Count'),
             pl.col('Mortgage Amount').sum().alias('Total Volume')
@@ -52,12 +67,13 @@ def analyze_lender_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
         )
         .sort('Loan Count', descending=True)
         .head(20)
+        .collect()
     )
     results['lender_volume'] = lender_volume
 
     # Lender activity by year
     yearly_lenders = (
-        df.group_by('Year')
+        lf.group_by('Year')
         .agg([
             pl.col('Originating Mortgagee').n_unique().alias('Active Lenders'),
             pl.col('FHA_Index').count().alias('Total Loans')
@@ -66,6 +82,7 @@ def analyze_lender_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
             (pl.col('Total Loans') / pl.col('Active Lenders')).alias('Avg Loans per Lender')
         )
         .sort('Year')
+        .collect()
     )
     results['yearly_lenders'] = yearly_lenders
 
@@ -184,7 +201,9 @@ def build_lender_panel(
     return result
 
 
-def analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+def analyze_sponsor_activity(
+    df: pl.DataFrame | pl.LazyFrame,
+) -> Dict[str, pl.DataFrame]:
     """
     Analyze sponsor activity in the FHA single-family program.
     
@@ -194,11 +213,12 @@ def analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     Returns:
         Dictionary of DataFrames with various sponsor metrics
     """
-    results = {}
-    
-    # Filter for sponsored loans
-    sponsored_loans = df.filter(pl.col('Sponsor Name').is_not_null())
-    
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+    results: Dict[str, pl.DataFrame] = {}
+
+    # Filter for sponsored loans lazily
+    sponsored_loans = lf.filter(pl.col('Sponsor Name').is_not_null())
+
     # Top sponsors by volume
     sponsor_volume = (
         sponsored_loans.group_by('Sponsor Name')
@@ -211,6 +231,7 @@ def analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
         )
         .sort('Loan Count', descending=True)
         .head(20)
+        .collect()
     )
     results['sponsor_volume'] = sponsor_volume
 
@@ -222,13 +243,16 @@ def analyze_sponsor_activity(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
             pl.col('FHA_Index').count().alias('Sponsored Loans')
         ])
         .sort('Year')
+        .collect()
     )
     results['yearly_sponsors'] = yearly_sponsors
 
     return results
 
 
-def analyze_refinance_share(df: pl.DataFrame) -> pl.DataFrame:
+def analyze_refinance_share(
+    df: pl.DataFrame | pl.LazyFrame,
+) -> pl.DataFrame:
     """
     Analyze the share of refinanced loans over time.
 
@@ -240,26 +264,34 @@ def analyze_refinance_share(df: pl.DataFrame) -> pl.DataFrame:
     """
 
     # Check for Date column and create it if it doesn't exist
-    if 'Date' not in df.columns:
-        df = df.with_columns(
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+
+    if 'Date' not in lf.columns:
+        lf = lf.with_columns(
             pl.concat_str([
                 pl.col('Year').cast(pl.Utf8).str.zfill(4),
                 pl.col('Month').cast(pl.Utf8).str.zfill(2),
             ], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
         )
 
-    # Group by year and month and calculate the share of refinance loans
-    df = df.group_by(['Date']).agg(
-        pl.col('Loan Purpose').fill_null('').str.to_lowercase().str.contains('purchase').sum().alias('purchase_loan_count'),
-        pl.col('Loan Purpose').fill_null('').str.to_lowercase().str.contains('refi').sum().alias('refinance_loan_count'),
+    result = (
+        lf.group_by(['Date']).agg(
+            pl.col('Loan Purpose').fill_null('').str.to_lowercase().str.contains('purchase').sum().alias('purchase_loan_count'),
+            pl.col('Loan Purpose').fill_null('').str.to_lowercase().str.contains('refi').sum().alias('refinance_loan_count'),
+        )
+        .with_columns(
+            (pl.col('refinance_loan_count') / (
+                pl.col('purchase_loan_count') + pl.col('refinance_loan_count')
+            )).alias('refinance_share')
+        )
+        .collect()
     )
-    df = df.with_columns(
-        (pl.col('refinance_loan_count') / (pl.col('purchase_loan_count') + pl.col('refinance_loan_count'))).alias('refinance_share'),
-    )
-    return df
+    return result
 
 
-def analyze_fixed_rate_share(df: pl.DataFrame) -> pl.DataFrame :
+def analyze_fixed_rate_share(
+    df: pl.DataFrame | pl.LazyFrame,
+) -> pl.DataFrame:
     """
     Analyze the share of fixed rate loans over time.
 
@@ -273,26 +305,29 @@ def analyze_fixed_rate_share(df: pl.DataFrame) -> pl.DataFrame :
     """
 
     # Check for Date column and create it if it doesn't exist
-    if 'Date' not in df.columns:
-        df = df.with_columns(
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+
+    if 'Date' not in lf.columns:
+        lf = lf.with_columns(
             pl.concat_str([
                 pl.col('Year').cast(pl.Utf8).str.zfill(4),
                 pl.col('Month').cast(pl.Utf8).str.zfill(2),
             ], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
         )
 
-    # Group by year and month and calculate the share of refinance loans
-    df = df.group_by(['Date']).agg(
-        pl.col('Product Type').fill_null('').str.to_lowercase().str.contains('fixed').sum().alias('fixed_rate_count'),
-        pl.col('Product Type').fill_null('').str.to_lowercase().str.contains('adjustable').sum().alias('adjustable_rate_count'),
+    result = (
+        lf.group_by(['Date']).agg(
+            pl.col('Product Type').fill_null('').str.to_lowercase().str.contains('fixed').sum().alias('fixed_rate_count'),
+            pl.col('Product Type').fill_null('').str.to_lowercase().str.contains('adjustable').sum().alias('adjustable_rate_count'),
+        )
+        .with_columns(
+            (pl.col('adjustable_rate_count') / (
+                pl.col('adjustable_rate_count') + pl.col('fixed_rate_count')
+            )).alias('adjustable_rate_share')
+        )
+        .collect()
     )
-
-    # Compute average rates
-
-    df = df.with_columns(
-        (pl.col('adjustable_rate_count') / (pl.col('adjustable_rate_count') + pl.col('fixed_rate_count'))).alias('adjustable_rate_share'),
-    )
-    return df
+    return result
 
 
 def print_summary_statistics(stats_dict: Dict[str, pl.DataFrame], section: str) -> None:

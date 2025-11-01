@@ -16,7 +16,9 @@ FHA Data Manager provides two main types of analysis:
 ```python
 from fha_data_manager.analysis import load_combined_data
 
-df = load_combined_data("data/database/single_family")
+lf = load_combined_data("data/database/single_family")
+# Collect to a DataFrame only if you need to materialize the entire table
+df = lf.collect()
 ```
 
 ### Lender Activity Analysis
@@ -26,7 +28,7 @@ Analyze lender market activity and concentration:
 ```python
 from fha_data_manager.analysis import analyze_lender_activity
 
-lender_stats = analyze_lender_activity(df)
+lender_stats = analyze_lender_activity(lf)
 
 # Top lenders by volume
 print(lender_stats['lender_volume'].head(10))
@@ -46,7 +48,7 @@ Analyze sponsor participation in FHA lending:
 ```python
 from fha_data_manager.analysis import analyze_sponsor_activity
 
-sponsor_stats = analyze_sponsor_activity(df)
+sponsor_stats = analyze_sponsor_activity(lf)
 
 # Top sponsors
 print(sponsor_stats['sponsor_volume'].head(10))

@@ -35,6 +35,7 @@ class InstitutionAnalyzer:
         self.data_path = Path(data_path)
         self.df = None
         self.institution_pairs = None
+        self._institution_pairs_df: pl.DataFrame | None = None
         self.last_name_change_event_log = None
     
     def load_data(self):
@@ -53,18 +54,19 @@ class InstitutionAnalyzer:
         """
         logger.info("Building institution crosswalk...")
         
-        # Add Date column if not present
+        # Add Date column lazily if not present
         df_with_date = self.df.with_columns(
             pl.date(pl.col("Year"), pl.col("Month"), 1).alias("Date")
         )
-        
-        # Process originating mortgagees
+
+        # Process originating mortgagees lazily
         orig_pairs = (
-            df_with_date.select(['Originating Mortgagee Number', 'Originating Mortgagee', 'Date'])
+            df_with_date
+            .select(['Originating Mortgagee Number', 'Originating Mortgagee', 'Date'])
             .unique()
             .filter(
-                pl.col('Originating Mortgagee Number').is_not_null() &
-                pl.col('Originating Mortgagee').is_not_null()
+                pl.col('Originating Mortgagee Number').is_not_null()
+                & pl.col('Originating Mortgagee').is_not_null()
             )
             .with_columns([
                 pl.col('Originating Mortgagee Number').cast(pl.Utf8).str.strip_chars().alias('institution_number'),
@@ -73,14 +75,15 @@ class InstitutionAnalyzer:
             ])
             .select(['institution_number', 'institution_name', 'type', 'Date'])
         )
-        
-        # Process sponsors
+
+        # Process sponsors lazily
         sponsor_pairs = (
-            df_with_date.select(['Sponsor Number', 'Sponsor Name', 'Date'])
+            df_with_date
+            .select(['Sponsor Number', 'Sponsor Name', 'Date'])
             .unique()
             .filter(
-                pl.col('Sponsor Number').is_not_null() &
-                pl.col('Sponsor Name').is_not_null()
+                pl.col('Sponsor Number').is_not_null()
+                & pl.col('Sponsor Name').is_not_null()
             )
             .with_columns([
                 pl.col('Sponsor Number').cast(pl.Utf8).str.strip_chars().alias('institution_number'),
@@ -89,21 +92,28 @@ class InstitutionAnalyzer:
             ])
             .select(['institution_number', 'institution_name', 'type', 'Date'])
         )
-        
-        # Combine originators and sponsors
-        self.institution_pairs = pl.concat([orig_pairs, sponsor_pairs]).collect()
-        
-        # Drop empty entries
-        self.institution_pairs = self.institution_pairs.filter(
+
+        # Combine originators and sponsors lazily
+        institution_pairs_lf = pl.concat([orig_pairs, sponsor_pairs])
+        institution_pairs_lf = institution_pairs_lf.filter(
             (pl.col('institution_number') != '') &
             (pl.col('institution_name') != '')
         )
-        
-        logger.info("Total institution-period records: %s", f"{len(self.institution_pairs):,}")
-        
-        # Create summary with temporal info
+
+        record_count = (
+            institution_pairs_lf.select(pl.len().alias('record_count'))
+            .collect()
+            .to_series()[0]
+        )
+        logger.info("Total institution-period records: %s", f"{record_count:,}")
+
+        # Store lazy pairs and reset eager cache
+        self.institution_pairs = institution_pairs_lf
+        self._institution_pairs_df = None
+
+        # Create summary with temporal info lazily and collect once
         crosswalk = (
-            self.institution_pairs
+            institution_pairs_lf
             .group_by(['institution_number', 'institution_name', 'type'])
             .agg([
                 pl.col('Date').min().alias('first_date'),
@@ -111,9 +121,23 @@ class InstitutionAnalyzer:
                 pl.col('Date').n_unique().alias('num_months')
             ])
             .sort(['institution_number', 'type', 'first_date'])
+            .collect()
         )
-        
+
         return crosswalk
+
+    def _collect_institution_pairs(self) -> pl.DataFrame:
+        """Collect and cache institution pairs when needed."""
+
+        if self.institution_pairs is None:
+            raise ValueError("Institution pairs are not initialized. Call build_institution_crosswalk first.")
+
+        if isinstance(self.institution_pairs, pl.LazyFrame):
+            if self._institution_pairs_df is None:
+                self._institution_pairs_df = self.institution_pairs.collect()
+            return self._institution_pairs_df
+
+        return self.institution_pairs
     
     def find_mapping_errors(self) -> pl.DataFrame:
         """
@@ -130,12 +154,14 @@ class InstitutionAnalyzer:
         
         if self.institution_pairs is None:
             self.build_institution_crosswalk()
-        
+
+        pairs_df = self._collect_institution_pairs()
+
         errors = []
-        
+
         # Find months where the same number maps to multiple names
         monthly_mappings = (
-            self.institution_pairs
+            pairs_df
             .with_columns([
                 pl.col('Date').dt.year().alias('year'),
                 pl.col('Date').dt.month().alias('month')
@@ -178,9 +204,11 @@ class InstitutionAnalyzer:
         """Find cases where institution names oscillate back and forth."""
         errors = []
         
-        for inst_num in self.institution_pairs['institution_number'].unique():
+        pairs_df = self._collect_institution_pairs()
+
+        for inst_num in pairs_df['institution_number'].unique():
             num_data = (
-                self.institution_pairs
+                pairs_df
                 .filter(pl.col('institution_number') == inst_num)
                 .sort('Date')
             )
@@ -957,8 +985,9 @@ class InstitutionAnalyzer:
         log_message("\n" + "=" * 80, log_file)
         log_message("SUMMARY STATISTICS", log_file)
         log_message("=" * 80, log_file)
-        log_message(f"Unique institution numbers: {self.institution_pairs['institution_number'].n_unique()}", log_file)
-        log_message(f"Unique institution names: {self.institution_pairs['institution_name'].n_unique()}", log_file)
+        pairs_df = self._collect_institution_pairs()
+        log_message(f"Unique institution numbers: {pairs_df['institution_number'].n_unique()}", log_file)
+        log_message(f"Unique institution names: {pairs_df['institution_name'].n_unique()}", log_file)
         log_message(f"IDs with name changes: {len(name_changes):,}", log_file)
         log_message(f"Mapping errors detected: {len(errors):,}", log_file)
         log_message(f"Originator oscillations: {len(oscillations.get('originators', [])):,}", log_file)
