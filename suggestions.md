@@ -26,7 +26,7 @@
 
 ## Performance & Scalability
 - [x] Implement parallel processing for batch operations (e.g., processing multiple months concurrently during import) using `concurrent.futures` or `multiprocessing`.
-- [ ] Add support for incremental updates to the hive-structured database so users can append new months without reprocessing the entire dataset.
+- [x] Add support for incremental updates to the hive-structured database so users can append new months without reprocessing the entire dataset.
 - [ ] Optimize FIPS code matching in `add_county_fips()` by pre-building lookup tables instead of repeated string operations.
 - [ ] Consider using Polars lazy evaluation more extensively in analysis functions to defer computation until necessary.
 

@@ -9,10 +9,10 @@ from typing import Callable, Sequence
 
 from fha_data_manager.utils.config import BRONZE_DIR, DATA_DIR, RAW_DIR, SILVER_DIR
 from fha_data_manager.import_data import (
+    SnapshotType,
     convert_fha_hecm_snapshots,
     convert_fha_sf_snapshots,
-    SnapshotType,
-    save_clean_snapshots_to_db,
+    update_clean_snapshots_to_db,
 )
 from fha_data_manager.utils.logging import configure_logging
 
@@ -123,7 +123,7 @@ def _run_import_pipeline(
     else:
         convert_fha_hecm_snapshots(raw_dir, bronze_dir, overwrite=overwrite)
 
-    save_clean_snapshots_to_db(
+    update_clean_snapshots_to_db(
         bronze_dir,
         silver_dir,
         min_year=min_year,
