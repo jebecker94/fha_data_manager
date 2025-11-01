@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import datetime
 import logging
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from multiprocessing import get_context
 from os import cpu_count
@@ -1219,12 +1220,71 @@ def _convert_hecm_snapshot(task: _SnapshotConversionTask) -> None:
         logger.error('Error saving file %s: %s', task.output_file, exc)
 
 
+def _prepare_snapshot_export(
+    frames: Sequence[pl.LazyFrame],
+    *,
+    file_type: SnapshotType,
+    add_fips: bool,
+    add_date: bool,
+) -> pl.LazyFrame:
+    """Apply shared export transformations to a collection of snapshot frames."""
+
+    if not frames:
+        msg = "No snapshot frames provided for export"
+        raise ValueError(msg)
+
+    df = pl.concat(frames, how="diagonal_relaxed")
+
+    for column in ["Originating Mortgagee", "Sponsor Name"]:
+        df = df.with_columns(
+            pl.when(pl.col(column).is_null())
+            .then(pl.lit(""))
+            .otherwise(pl.col(column))
+            .alias(column)
+        )
+        df = df.with_columns(
+            pl.when(pl.col(column).is_in(["nan", "None"]))
+            .then(pl.lit(""))
+            .otherwise(pl.col(column))
+            .alias(column)
+        )
+
+    if add_fips:
+        df = add_county_fips(df)
+
+    if add_date:
+        df = df.with_columns(
+            pl.concat_str([
+                pl.col("Year").cast(pl.Utf8).str.zfill(4),
+                pl.col("Month").cast(pl.Utf8).str.zfill(2),
+            ], separator="-")
+            .str.to_datetime(format="%Y-%m", strict=False)
+            .alias("Date")
+        )
+
+    if file_type == "single_family" and add_date and "Date" in df.columns:
+        df = df.with_columns(
+            pl.when(pl.col("Date") == datetime.datetime(2014, 8, 1))
+            .then(pl.lit(""))
+            .otherwise(pl.col("Sponsor Name"))
+            .alias("Sponsor Name")
+        )
+
+    df = df.unique()
+    df = df.drop_nulls(subset=["Year", "Month"])
+
+    if file_type == "single_family":
+        df = _apply_single_family_categoricals(df)
+
+    return df
+
+
 def save_clean_snapshots_to_db(
     data_folder: Path,
     save_folder: Path,
     min_year: int = 2010,
     max_year: int = 2025,
-    file_type: SnapshotType = 'single_family',
+    file_type: SnapshotType = "single_family",
     add_fips: bool = True,
     add_date: bool = True,
 ) -> None:
@@ -1275,69 +1335,153 @@ def save_clean_snapshots_to_db(
     
     # Get Files and Combine
     frames: list[pl.LazyFrame] = []
-    for year in range(min_year, max_year+1) :
-        files = sorted(data_folder.glob(f'fha_*snapshot*{year}*.parquet'))
-        for file in files :
-            df_a = pl.scan_parquet(str(file))
-            frames.append(df_a)
-    df = pl.concat(frames, how='diagonal_relaxed')
+    for year in range(min_year, max_year + 1):
+        files = sorted(data_folder.glob(f"fha_*snapshot*{year}*.parquet"))
+        for file in files:
+            frames.append(pl.scan_parquet(str(file)))
 
-    
-    # Replace null values with empty strings
-    for column in ["Originating Mortgagee", "Sponsor Name"]:
-        df = df.with_columns(
-            pl.when(pl.col(column).is_null())
-            .then(pl.lit(""))
-            .otherwise(pl.col(column))
-            .alias(column)
+    if not frames:
+        logger.info(
+            "No cleaned snapshots found in %s for the requested range; skipping export.",
+            data_folder,
         )
-        df = df.with_columns(
-            pl.when(pl.col(column).is_in(["nan", "None"]))
-            .then(pl.lit(""))
-            .otherwise(pl.col(column))
-            .alias(column)
-        )
+        return
 
-    # Iterate over rows and add FIPS codes to unique_counties
-    if add_fips:
-        df = add_county_fips(df)
-
-    # Create Datetime Column
-    if add_date:
-        df = df.with_columns(
-            pl.concat_str([
-                pl.col('Year').cast(pl.Utf8).str.zfill(4),
-                pl.col('Month').cast(pl.Utf8).str.zfill(2),
-            ], separator='-').str.to_datetime(format='%Y-%m', strict=False).alias('Date')
-        )
-
-    # Replace Sponsor Name with '' for August 2014
-    if file_type == 'single_family':
-        df = df.with_columns(
-            pl.when(pl.col('Date') == datetime.datetime(2014,8,1))
-            .then(pl.lit(''))
-            .otherwise(pl.col('Sponsor Name'))
-            .alias('Sponsor Name')
-        )
-
-    # Drop Duplicates: Unclear why there are duplicates in the combined file, but there are.
-    df = df.unique()
-
-    # Drop Null Rows in Year and Month
-    df = df.drop_nulls(subset=['Year', 'Month'])
-
-    if file_type == 'single_family':
-        df = _apply_single_family_categoricals(df)
+    df = _prepare_snapshot_export(
+        frames,
+        file_type=file_type,
+        add_fips=add_fips,
+        add_date=add_date,
+    )
 
     # Sink
     df.sink_parquet(
         pl.PartitionByKey(
             save_folder,
-            by=['Year','Month'],
+            by=["Year", "Month"],
             include_key=True,
         ),
         mkdir=True,
     )
+
+
+def _existing_partitions(save_folder: Path) -> set[tuple[int, int]]:
+    """Return the set of year/month partitions already present in ``save_folder``."""
+
+    partitions: set[tuple[int, int]] = set()
+    if not save_folder.exists():
+        return partitions
+
+    for year_dir in save_folder.glob("Year=*"):
+        try:
+            year = int(year_dir.name.split("=", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        for month_dir in year_dir.glob("Month=*"):
+            try:
+                month = int(month_dir.name.split("=", 1)[1])
+            except (IndexError, ValueError):
+                continue
+            partitions.add((year, month))
+
+    return partitions
+
+
+_SNAPSHOT_FILENAME_PATTERN = re.compile(r"(\d{4})(\d{2})(\d{2})")
+
+
+def _infer_snapshot_period(path: Path) -> tuple[int, int] | None:
+    """Extract the ``(year, month)`` tuple from a cleaned snapshot filename."""
+
+    match = _SNAPSHOT_FILENAME_PATTERN.search(path.stem)
+    if not match:
+        return None
+
+    year, month, _ = (int(part) for part in match.groups())
+    return year, month
+
+
+def update_clean_snapshots_to_db(
+    data_folder: Path,
+    save_folder: Path,
+    min_year: int = 2010,
+    max_year: int = 2025,
+    file_type: SnapshotType = "single_family",
+    add_fips: bool = True,
+    add_date: bool = True,
+) -> list[tuple[int, int]]:
+    """Append newly cleaned snapshots to the hive-partitioned parquet database.
+
+    Only snapshots whose ``Year`` and ``Month`` partitions are not already present
+    in ``save_folder`` will be processed. The function returns the list of
+    ``(year, month)`` pairs that were appended.
+    """
+
+    save_folder.mkdir(parents=True, exist_ok=True)
+
+    existing_partitions = _existing_partitions(save_folder)
+    logger.info(
+        "Detected %d existing partitions in %s.",
+        len(existing_partitions),
+        save_folder,
+    )
+
+    appended_partitions: list[tuple[int, int]] = []
+    frames: list[pl.LazyFrame] = []
+
+    for file in sorted(data_folder.glob("*.parquet")):
+        period = _infer_snapshot_period(file)
+        if period is None:
+            logger.debug("Skipping unrecognised snapshot filename: %s", file.name)
+            continue
+
+        year, month = period
+        if year < min_year or year > max_year:
+            continue
+        if (year, month) in existing_partitions:
+            continue
+
+        logger.info(
+            "Queueing snapshot %s for incremental append (Year=%d, Month=%d)",
+            file.name,
+            year,
+            month,
+        )
+        frames.append(pl.scan_parquet(str(file)))
+        appended_partitions.append((year, month))
+
+    if not frames:
+        logger.info(
+            "No new cleaned snapshots found between %d and %d for %s.",
+            min_year,
+            max_year,
+            data_folder,
+        )
+        return []
+
+    df = _prepare_snapshot_export(
+        frames,
+        file_type=file_type,
+        add_fips=add_fips,
+        add_date=add_date,
+    )
+
+    df.sink_parquet(
+        pl.PartitionByKey(
+            save_folder,
+            by=["Year", "Month"],
+            include_key=True,
+        ),
+        mkdir=True,
+    )
+
+    logger.info(
+        "Incremental update complete for %s; appended %d partitions.",
+        save_folder,
+        len(appended_partitions),
+    )
+
+    return appended_partitions
 
 @dataclass(frozen=True)
 class _SnapshotConversionTask:

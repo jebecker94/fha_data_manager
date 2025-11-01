@@ -29,6 +29,7 @@ from .import_data import (
     save_clean_snapshots_to_db,
     standardize_county_names,
     upload_directory_to_huggingface_hub,
+    update_clean_snapshots_to_db,
 )
 from .utils.versioning import SnapshotManifest
 
@@ -59,6 +60,7 @@ __all__ = [
     "save_clean_snapshots_to_db",
     "standardize_county_names",
     "upload_directory_to_huggingface_hub",
+    "update_clean_snapshots_to_db",
     # Versioning
     "SnapshotManifest",
 ]
