@@ -130,10 +130,10 @@ from fha_data_manager.analysis import (
     analyze_loan_characteristics,
 )
 
-df = load_combined_data("data/database/single_family")
-lender_stats = analyze_lender_activity(df)
-sponsor_stats = analyze_sponsor_activity(df)
-loan_stats = analyze_loan_characteristics(df)
+lf = load_combined_data("data/database/single_family")
+lender_stats = analyze_lender_activity(lf)
+sponsor_stats = analyze_sponsor_activity(lf)
+loan_stats = analyze_loan_characteristics(lf.collect())
 ```
 
 #### Institution Analysis

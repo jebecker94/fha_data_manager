@@ -115,12 +115,6 @@ def summarize_county_metrics(
     return result
 
 
-def _collect_frame(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
-    """Collect the input into a :class:`polars.DataFrame` if it is lazy."""
-
-    return df.collect() if isinstance(df, pl.LazyFrame) else df
-
-
 def create_state_loan_count_choropleth(
     df: pl.DataFrame | pl.LazyFrame,
     *,
@@ -142,16 +136,18 @@ def create_state_loan_count_choropleth(
         loan count map.
     """
 
-    frame = _collect_frame(df)
-    if state_col not in frame.columns:
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+
+    if state_col not in lf.columns:
         msg = f"Column '{state_col}' not found in dataframe."
         raise ValueError(msg)
 
     aggregated = (
-        frame.group_by(state_col)
+        lf.group_by(state_col)
         .agg(pl.len().alias("loan_count"))
         .with_columns(pl.col(state_col).cast(pl.Utf8).str.to_uppercase())
         .sort(state_col)
+        .collect()
     )
 
     pdf = aggregated.rename({state_col: "state"}).to_pandas()
@@ -203,18 +199,19 @@ def create_county_loan_count_choropleth(
         loan count map.
     """
 
-    frame = _collect_frame(df)
+    lf = df.lazy() if isinstance(df, pl.DataFrame) else df
+
     missing_columns = [
         col
         for col in (fips_col, state_col, county_col)
-        if col not in frame.columns
+        if col not in lf.columns
     ]
     if missing_columns:
         msg = f"Missing required columns for county choropleth: {missing_columns}"
         raise ValueError(msg)
 
     aggregated = (
-        frame.group_by(fips_col)
+        lf.group_by(fips_col)
         .agg(
             [
                 pl.len().alias("loan_count"),
@@ -230,6 +227,7 @@ def create_county_loan_count_choropleth(
             .alias("fips")
         )
         .sort("fips")
+        .collect()
     )
 
     pdf = aggregated.rename({state_col: "state", county_col: "county"}).to_pandas()

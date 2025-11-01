@@ -21,8 +21,9 @@ class TestExploratoryAnalysis:
     
     def test_load_combined_data(self, sample_data_file):
         """Test loading data."""
-        df = load_combined_data(sample_data_file)
-        assert isinstance(df, pl.DataFrame)
+        lf = load_combined_data(sample_data_file)
+        assert isinstance(lf, pl.LazyFrame)
+        df = lf.collect()
         assert len(df) > 0
     
     def test_analyze_lender_activity(self, sample_single_family_data):

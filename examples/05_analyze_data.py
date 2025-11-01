@@ -21,17 +21,17 @@ def run_exploratory_analysis() -> None:
     
     # Load data
     print("\nLoading data...")
-    df = load_combined_data("data/silver/single_family")
-    
+    lf = load_combined_data("data/silver/single_family")
+
     # Analyze lender activity
     print("\nAnalyzing lender activity...")
-    lender_stats = analyze_lender_activity(df)
+    lender_stats = analyze_lender_activity(lf)
     print("\nTop 10 Lenders by Volume:")
     print(lender_stats['lender_volume'].head(10))
     
     # Analyze sponsor activity
     print("\nAnalyzing sponsor activity...")
-    sponsor_stats = analyze_sponsor_activity(df)
+    sponsor_stats = analyze_sponsor_activity(lf)
     print("\nTop 10 Sponsors by Volume:")
     print(sponsor_stats['sponsor_volume'].head(10))
     
